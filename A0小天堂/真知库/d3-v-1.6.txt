@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, touch-action: manipulation">
+    <title>D3-真实承诺 · 体素坐标流控制系统 v1.6</title>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <style>
+        * { user-select: none; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { background: #0d0f18; color: #eef; font-family: 'Segoe UI', system-ui, monospace; margin: 0; padding: 8px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; touch-action: manipulation; }
+        .main-container { width: 100%; max-width: 650px; }
+        .tab-nav { display: flex; gap: 4px; margin-bottom: 8px; background: #1a1c2a; border-radius: 30px; padding: 4px; }
+        .tab-btn { flex: 1; padding: 10px 6px; border-radius: 26px; background: transparent; color: #889; border: none; cursor: pointer; font-size: 12px; font-weight: bold; transition: 0.2s; white-space: nowrap; }
+        .tab-btn.active { background: #2e3a5c; color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+        .window-container { width: 100%; aspect-ratio: 1 / 1; background: #121420; border-radius: 20px; box-shadow: 0 8px 28px rgba(0,0,0,0.6); position: relative; overflow: hidden; margin-bottom: 8px; }
+        .window-panel { display: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+        .window-panel.active { display: block; }
+        .window-reset-btn { position: absolute; top: 8px; right: 8px; z-index: 10; background: rgba(0,0,0,0.6); color: #fff; border: 1px solid #555; border-radius: 20px; padding: 4px 10px; font-size: 11px; cursor: pointer; }
+        #videoPanel video { width: 100%; height: 100%; object-fit: cover; }
+        .window-panel canvas { width: 100%; height: 100%; display: block; }
+        .internal-ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 5; }
+        .internal-crosshair { width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.8); border-radius: 50%; pointer-events: none; }
+        .internal-mode-indicator { position: absolute; top: 40px; left: 8px; z-index: 5; background: rgba(0,0,0,0.7); color: #fff; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-family: monospace; }
+        .internal-coords { position: absolute; bottom: 40px; left: 8px; z-index: 5; background: rgba(0,0,0,0.7); color: #ffdf8c; padding: 4px 10px; border-radius: 12px; font-size: 10px; font-family: monospace; }
+        .control-panel { width: 100%; max-width: 650px; background: #1a1c2a; padding: 14px; border-radius: 20px; box-shadow: 0 6px 18px rgba(0,0,0,0.5); border: 1px solid #2b2d3e; margin-bottom: 8px; }
+        .control-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
+        .control-row label { font-size: 12px; font-weight: bold; color: #cbd; min-width: 35px; white-space: nowrap; }
+        input[type="text"], input[type="number"] { flex: 1; background: #0a0c16; border: 1px solid #3a3c58; color: #ffdf8c; padding: 6px 8px; border-radius: 20px; text-align: center; font-weight: bold; font-size: 12px; min-width: 45px; }
+        textarea { flex: 3; background: #0a0c16; border: 1px solid #3a3c58; color: #ffdf8c; padding: 10px 12px; border-radius: 16px; font-weight: bold; font-size: 13px; min-width: 200px; resize: vertical; font-family: monospace; min-height: 60px; }
+        button { background: #2a2c42; border: none; color: white; padding: 8px 14px; border-radius: 24px; font-weight: bold; font-size: 13px; cursor: pointer; transition: 0.12s; box-shadow: 0 2px 8px rgba(0,0,0,0.4); white-space: nowrap; }
+        button:active { transform: scale(0.95); background: #3f4160; }
+        button.primary { background: #3a5f8c; } button.danger { background: #6b3a3a; } button.success { background: #3a6b4a; }
+        button.lock-active { background: #8c6b3a; box-shadow: 0 0 10px #ffaa33; }
+        .output-area { background: #0b0c18; padding: 10px 12px; border-radius: 14px; font-family: monospace; font-size: 11px; border-left: 4px solid #ffb347; word-break: break-word; line-height: 1.4; max-height: 160px; overflow-y: auto; white-space: pre-wrap; color: #ddd; }
+        .status-bar { background: #0b0c18; padding: 8px 12px; border-radius: 16px; font-family: monospace; font-size: 11px; border-left: 4px solid #3a5f8c; word-break: break-word; margin-top: 6px; }
+        input[type="range"] { flex: 1; accent-color: #3a5f8c; min-width: 60px; }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 100; justify-content: center; align-items: center; }
+        .modal-overlay.show { display: flex; }
+        .modal-content { background: #1a1c2a; border-radius: 20px; padding: 20px; max-width: 500px; max-height: 75vh; overflow-y: auto; color: #eef; font-size: 12px; line-height: 1.5; border: 1px solid #3a3c58; margin: 20px; }
+        .modal-content h2 { margin-top: 0; color: #ffb347; } .modal-content h3 { color: #7ec8ff; margin-top: 14px; }
+        .modal-close { background: #3a5f8c; margin-top: 10px; width: 100%; }
+        .send-status { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; margin-left: 6px; }
+        .send-status.ok { background: #2a4a2a; color: #8f8; } .send-status.err { background: #4a2a2a; color: #f88; }
+    </style>
+</head>
+<body>
+<div class="main-container">
+    <div class="tab-nav">
+        <button class="tab-btn active" data-panel="external"> 三维外部</button>
+        <button class="tab-btn" data-panel="internal"> 三维内部</button>
+        <button class="tab-btn" data-panel="manhattan"> 二维曼哈顿</button>
+        <button class="tab-btn" data-panel="video"> 视频流</button>
+    </div>
+    <div class="window-container" id="windowContainer">
+        <div class="window-panel active" id="externalPanel"><button class="window-reset-btn" data-window="external"> 重置视角</button></div>
+        <div class="window-panel" id="internalPanel">
+            <button class="window-reset-btn" data-window="internal"> 重置视角</button>
+            <div class="internal-ui"><div class="internal-crosshair"></div></div>
+            <div class="internal-mode-indicator" id="internalMode"> 观察模式</div>
+            <div class="internal-coords" id="internalCoords">0, 0, 0</div>
+        </div>
+        <div class="window-panel" id="manhattanPanel"><button class="window-reset-btn" data-window="manhattan"> 重置视角</button><canvas id="manhattanCanvas"></canvas></div>
+        <div class="window-panel" id="videoPanel"><button class="window-reset-btn" data-window="video"> 重置视角</button><video id="cameraFeed" autoplay playsinline muted></video></div>
+    </div>
+</div>
+
+<!-- 世界参数：体素数量 -->
+<div class="control-panel">
+    <div class="control-row">
+        <label> AB体素</label><input type="number" id="voxelAB" value="22" step="1" min="2" max="33" inputmode="numeric">
+        <label> AD体素</label><input type="number" id="voxelAD" value="22" step="1" min="2" max="33" inputmode="numeric">
+        <label> AE体素</label><input type="number" id="voxelAE" value="22" step="1" min="2" max="33" inputmode="numeric">
+    </div>
+    <div class="control-row">
+        <label> AB米数</label><input type="number" id="meterAB" value="3.0" step="0.1" inputmode="decimal">
+        <label> AD米数</label><input type="number" id="meterAD" value="4.0" step="0.1" inputmode="decimal">
+        <label> AE米数</label><input type="number" id="meterAE" value="2.5" step="0.1" inputmode="decimal">
+        <span style="font-size:10px;color:#888;">米数仅用于指令包输出</span>
+    </div>
+</div>
+
+<!-- 指令输入 -->
+<div class="control-panel">
+    <div class="control-row"><label> 指令</label><textarea id="coordInput" placeholder="QD(0,0,0) D2(5,0,0) ZD(10,10,5)&#10;支持粘贴AI生成的坐标流"></textarea></div>
+    <div class="control-row">
+        <button class="primary" id="parseBtn"> 解析路径</button>
+        <button class="danger" id="clearAnchorBtn"> 清除锚点</button>
+        <button id="resetPathBtn"> 重置路径</button>
+        <button id="globalResetBtn"> 一键重置</button>
+    </div>
+</div>
+
+<!-- 指令包与发送 -->
+<div class="control-panel">
+    <div class="control-row">
+        <button id="generatePkgBtn"> 生成指令包</button>
+        <button id="copyPkgBtn"> 复制指令包</button>
+        <span style="font-size:11px;color:#aaa;">发送:</span>
+        <button id="sendBLEBtn" class="success"> 蓝牙发送</button>
+        <button id="sendWifiBtn" class="success"> WiFi发送</button>
+        <span id="sendStatus" class="send-status" style="display:none;"></span>
+    </div>
+    <div class="output-area" id="outputArea">等待输入坐标...</div>
+</div>
+
+<!-- 外观与控制 -->
+<div class="control-panel">
+    <div class="control-row">
+        <label> 面透明度</label><input type="range" id="faceOpacitySlider" min="0" max="100" value="35">
+        <label> 线框透明度</label><input type="range" id="gridOpacitySlider" min="0" max="100" value="50">
+    </div>
+    <div class="control-row">
+        <button id="lockTranslateBtn"> 平移固定</button>
+        <button id="lockRotateBtn"> 旋转固定</button>
+        <button id="lockScaleBtn"> 缩放固定</button>
+        <button id="helpBtn"> 使用说明</button>
+    </div>
+    <div class="status-bar" id="statusBar"> D3-真实承诺 v1.6 就绪 | 体素坐标整数化</div>
+</div>
+
+<!-- 使用说明弹窗 -->
+<div class="modal-overlay" id="helpModal">
+    <div class="modal-content">
+        <h2>D3-真实承诺 · 使用说明</h2>
+        <h3>体素世界法则 · 公理篇</h3>
+        <p><b>公理一：方块即坐标</b> - 每个方块恰好占据一个正方体网格位置。</p>
+        <p><b>公理二：左上角即真理</b> - X最小、Y最大、Z最小，不随视角改变。</p>
+        <p><b>公理三：关键点即方块</b> - 白色方块只出现在拐弯点上。</p>
+        <p><b>公理四：手动即生成</b> - 放置方块自动纳入路径序列。</p>
+        <p><b>公理五：文本即映射</b> - 输入坐标自动生成对应方块。</p>
+        <p><b>公理六：拆除即崩塌</b> - 拆除后后续全部消失。</p>
+        <p><b>公理七：终点即截断</b> - 变终点后后续全部消失。</p>
+        <p><b>公理八：二维即俯视</b> - 二维曼哈顿是XZ平面俯视图。</p>
+        <p><b>公理九：体素即整数</b> - 内部坐标全为整数体素索引，米数仅用于输出换算。</p>
+        <h3>内部窗口操作</h3>
+        <p>WASD前后左右，QE上升下降，鼠标拖拽旋转视角</p>
+        <p><b>按1</b>：放置模式 <b>按0</b>：拆除模式 <b>按8</b>：终点模式（点三次变蓝）</p>
+        <p><b>按2</b>：障碍模式（V1.7启用）</p>
+        <p>传送：在指令框输入 <code>TP(x,y,z)</code> 然后点解析路径</p>
+        <h3>更新日志</h3>
+        <p><b>V1.0</b> - 最初骨架：文本输入+指令包生成</p>
+        <p><b>V1.1</b> - Three.js修复：原点吸附，二维曼哈顿基础渲染</p>
+        <p><b>V1.2</b> - 三维内部窗口：飞行、放置、拆除、传送</p>
+        <p><b>V1.4</b> - 内部窗口修复：摄像机初始位置、体素输入校验</p>
+        <p><b>V1.5</b> - 手动放置生成路径：终点模式、拆除崩塌、文本与手动同步</p>
+        <p><b>V1.6</b> - 体素坐标整数化：内部坐标全为整数体素索引，三独立输入框，无限缩小，Fill指令预留</p>
+        <button class="modal-close" id="closeHelpBtn">关闭</button>
+    </div>
+</div>
+
+<script>
+/* ========== 模块0：全局状态管理 V1.6 - 体素坐标整数化 ========== */
+var D3State = {
+    // 体素数量（三方向独立）
+    voxelCountAB: 22, voxelCountAD: 22, voxelCountAE: 22,
+    // 物理米数（仅用于指令包输出换算）
+    meterAB: 3.0, meterAD: 4.0, meterAE: 2.5,
+    // 体素物理边长（自动计算，仅用于输出换算和渲染缩放）
+    voxelSizeAB: 0, voxelSizeAD: 0, voxelSizeAE: 0,
+    // 路径数据（坐标全部为整数体素索引）
+    pathPoints: [],
+    anchorMeshes: [], manualPlaceOrder: [],
+    lockTranslate: false, lockRotate: false, lockScale: false,
+    opacityFace: 0.35, opacityGrid: 0.5,
+    scene: null, externalRenderer: null, internalRenderer: null,
+    externalCamera: null, internalCamera: null, externalControls: null,
+    boxMesh: null, gridLines: null, redMidpoint: null,
+    pathLine: null, arrowMesh: null,
+    externalAnimId: null, internalAnimId: null, manhattanAnimId: null,
+    internalMode: 'observe',
+    internalMoveForward: false, internalMoveBack: false, internalMoveLeft: false, internalMoveRight: false,
+    internalMoveUp: false, internalMoveDown: false,
+    internalMouseDown: false, internalLastMouseX: 0, internalLastMouseY: 0,
+    internalPitch: 0, internalYaw: 0, internalReady: false,
+    endpointClickCount: {},
+    bleDevice: null, bleCharacteristic: null, wifiSocket: null,
+
+    init: function() { this.calcVoxelSize(); },
+    calcVoxelSize: function() {
+        // 体素渲染尺寸 = 物理米数 / 体素数量（用于Three.js渲染缩放）
+        this.voxelSizeAB = this.meterAB / this.voxelCountAB;
+        this.voxelSizeAD = this.meterAD / this.voxelCountAD;
+        this.voxelSizeAE = this.meterAE / this.voxelCountAE;
+    },
+    // 体素坐标吸附：整数取整（V1.6核心改动）
+    snapToCorner: function(x, y, z) {
+        return {
+            x: Math.round(x),
+            y: Math.round(y),
+            z: Math.round(z)
+        };
+    },
+    // 获取体素在Three.js场景中的渲染中心位置
+    getVoxelRenderCenter: function(voxelCoord) {
+        // 长方体几何中心在原点，体素坐标需映射到渲染空间
+        var rx = (voxelCoord.x - this.voxelCountAB/2 + 0.5) * this.voxelSizeAB;
+        var ry = (voxelCoord.y - this.voxelCountAE/2 + 0.5) * this.voxelSizeAE;
+        var rz = (voxelCoord.z - this.voxelCountAD/2 + 0.5) * this.voxelSizeAD;
+        return { x: rx, y: ry, z: rz };
+    },
+    // 从Three.js世界坐标反算体素坐标
+    worldToVoxel: function(wx, wy, wz) {
+        var vx = Math.round(wx / this.voxelSizeAB + this.voxelCountAB/2 - 0.5);
+        var vy = Math.round(wy / this.voxelSizeAE + this.voxelCountAE/2 - 0.5);
+        var vz = Math.round(wz / this.voxelSizeAD + this.voxelCountAD/2 - 0.5);
+        return this.snapToCorner(vx, vy, vz);
+    },
+    isSnapEqual: function(a, b) {
+        return a.x === b.x && a.y === b.y && a.z === b.z;
+    },
+    syncPathToText: function() {
+        var lines = [];
+        for (var i = 0; i < this.pathPoints.length; i++) {
+            var p = this.pathPoints[i];
+            lines.push(p.type + '(' + p.x + ',' + p.y + ',' + p.z + ')');
+        }
+        var el = document.getElementById('coordInput');
+        if (el) el.value = lines.join('\n');
+    }
+};
+D3State.init();
+
+var coordInput = document.getElementById('coordInput');
+var outputArea = document.getElementById('outputArea');
+var statusBar = document.getElementById('statusBar');
+
+/* ========== 路径解析 ========== */
+function parseCoordText(text) {
+    var tpMatch = text.match(/TP\((-?[\d.]+),(-?[\d.]+),(-?[\d.]+)\)/);
+    if (tpMatch) {
+        var tx = parseInt(tpMatch[1]), ty = parseInt(tpMatch[2]), tz = parseInt(tpMatch[3]);
+        if (D3State.internalCamera) {
+            var rc = D3State.getVoxelRenderCenter({x:tx,y:ty,z:tz});
+            D3State.internalCamera.position.set(rc.x, rc.y, rc.z + 2);
+            D3State.internalCamera.lookAt(rc.x, rc.y, rc.z);
+            if (statusBar) statusBar.innerHTML = '已传送到体素(' + tx + ', ' + ty + ', ' + tz + ')';
+        }
+        return [];
+    }
+    var points = [];
+    var regex = /(QD|D\d+|ZD)\((-?[\d.]+),(-?[\d.]+),(-?[\d.]+)\)/g;
+    var match;
+    while ((match = regex.exec(text)) !== null) {
+        points.push({ type: match[1], x: parseInt(match[2]), y: parseInt(match[3]), z: parseInt(match[4]) });
+    }
+    if (points.length === 0) return [];
+    var qd = [], zd = [], dn = [];
+    for (var i = 0; i < points.length; i++) {
+        if (points[i].type === 'QD') qd.push(points[i]);
+        else if (points[i].type === 'ZD') zd.push(points[i]);
+        else if (points[i].type.indexOf('D') === 0) dn.push(points[i]);
+    }
+    dn.sort(function(a, b) { return parseInt(a.type.substring(1)) - parseInt(b.type.substring(1)); });
+    return qd.concat(dn).concat(zd);
+}
+
+function generatePackage(points) {
+    if (points.length < 2) return null;
+    var out = points.length === 2 ? '路径类型：直线路径\n' : '路径类型：自由路径\n';
+    out += '总段数：' + (points.length - 1) + '\n\n路径坐标清单（体素）：\n';
+    var names = [];
+    for (var i = 0; i < points.length; i++) {
+        names.push(points[i].type + '(' + points[i].x + ',' + points[i].y + ',' + points[i].z + ')');
+    }
+    out += names.join(' → ') + '\n\n物理距离清单：\n';
+    for (var j = 0; j < points.length - 1; j++) {
+        var a = points[j], b = points[j+1];
+        var dx = Math.abs(b.x - a.x) * D3State.voxelSizeAB;
+        var dz = Math.abs(b.z - a.z) * D3State.voxelSizeAD;
+        var dy = Math.abs(b.y - a.y) * D3State.voxelSizeAE;
+        out += '段' + (j+1) + ': legX=' + dx.toFixed(2) + 'm, legZ=' + dz.toFixed(2) + 'm, legY=' + dy.toFixed(2) + 'm\n';
+    }
+    return out;
+}
+
+/* ========== 场景更新 ========== */
+function rebuildAllAnchorsFromPath() {
+    if (!D3State.scene) return;
+    for (var i = 0; i < D3State.anchorMeshes.length; i++) { D3State.scene.remove(D3State.anchorMeshes[i]); }
+    D3State.anchorMeshes = [];
+    D3State.manualPlaceOrder = [];
+    for (var j = 0; j < D3State.pathPoints.length; j++) {
+        var p = D3State.pathPoints[j];
+        var rc = D3State.getVoxelRenderCenter(p);
+        var geo = new THREE.BoxGeometry(D3State.voxelSizeAB*0.95, D3State.voxelSizeAE*0.95, D3State.voxelSizeAD*0.95);
+        var color;
+        if (p.type === 'QD') color = 0x00ff00;
+        else if (p.type === 'ZD') color = 0x0088ff;
+        else color = 0xffffff;
+        var mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: color }));
+        mesh.position.set(rc.x, rc.y, rc.z);
+        mesh.userData = { type: p.type, vx: p.x, vy: p.y, vz: p.z };
+        D3State.scene.add(mesh);
+        D3State.anchorMeshes.push(mesh);
+        if (p.type === 'QD' || p.type.indexOf('D') === 0) { D3State.manualPlaceOrder.push(mesh); }
+    }
+}
+
+function updatePathLineInScene() {
+    if (!D3State.scene) return;
+    if (D3State.pathLine) { D3State.scene.remove(D3State.pathLine); D3State.pathLine = null; }
+    if (D3State.arrowMesh) { D3State.scene.remove(D3State.arrowMesh); D3State.arrowMesh = null; }
+    if (D3State.pathPoints.length < 2) return;
+    var pts = [];
+    for (var i = 0; i < D3State.pathPoints.length; i++) {
+        var rc = D3State.getVoxelRenderCenter(D3State.pathPoints[i]);
+        pts.push(new THREE.Vector3(rc.x, rc.y, rc.z));
+    }
+    var geo = new THREE.BufferGeometry().setFromPoints(pts);
+    D3State.pathLine = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xff3333, linewidth: 2 }));
+    D3State.scene.add(D3State.pathLine);
+    var last = pts[pts.length-1], prev = pts[pts.length-2] || pts[0];
+    var dir = new THREE.Vector3().subVectors(last, prev).normalize();
+    if (dir.length() < 0.001) dir.set(0,0,1);
+    var arrowGeo = new THREE.ConeGeometry(0.2, 0.5, 8, 8);
+    var arrowMesh = new THREE.Mesh(arrowGeo, new THREE.MeshBasicMaterial({ color: 0xff3333 }));
+    arrowMesh.position.copy(last);
+    arrowMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
+    D3State.arrowMesh = arrowMesh;
+    D3State.scene.add(arrowMesh);
+}
+
+function updateMidpointMarker() {
+    if (!D3State.scene || !D3State.redMidpoint) return;
+    var rc = D3State.getVoxelRenderCenter({x:0,y:0,z:0});
+    D3State.redMidpoint.position.set(rc.x, rc.y, rc.z);
+    D3State.redMidpoint.visible = true;
+}
+
+function refreshSceneVisuals() {
+    rebuildAllAnchorsFromPath();
+    updatePathLineInScene();
+    updateMidpointMarker();
+}
+
+function collapseAfterIndex(idx) {
+    if (idx < 0) idx = -1;
+    if (idx >= D3State.pathPoints.length) return;
+    D3State.pathPoints = D3State.pathPoints.slice(0, idx + 1);
+    D3State.syncPathToText();
+    refreshSceneVisuals();
+}
+
+function addManualPoint(voxelCoord) {
+    for (var i = 0; i < D3State.pathPoints.length; i++) {
+        if (D3State.isSnapEqual(D3State.pathPoints[i], voxelCoord)) {
+            if (statusBar) statusBar.innerHTML = '该位置已存在路径点';
+            return;
+        }
+    }
+    var type;
+    if (D3State.pathPoints.length === 0) { type = 'QD'; }
+    else {
+        var dnCount = 0;
+        for (var j = 0; j < D3State.pathPoints.length; j++) {
+            if (D3State.pathPoints[j].type.indexOf('D') === 0) dnCount++;
+        }
+        type = 'D' + (dnCount + 2);
+    }
+    D3State.pathPoints.push({ type: type, x: voxelCoord.x, y: voxelCoord.y, z: voxelCoord.z });
+    D3State.syncPathToText();
+    refreshSceneVisuals();
+    if (statusBar) statusBar.innerHTML = '放置 ' + type + ' @ 体素(' + voxelCoord.x + ', ' + voxelCoord.y + ', ' + voxelCoord.z + ')';
+}
+
+function removePointByVoxel(voxelCoord) {
+    var idx = -1;
+    for (var i = 0; i < D3State.pathPoints.length; i++) {
+        if (D3State.isSnapEqual(D3State.pathPoints[i], voxelCoord)) { idx = i; break; }
+    }
+    if (idx < 0) { if (statusBar) statusBar.innerHTML = '未找到对应路径点'; return; }
+    collapseAfterIndex(idx - 1);
+    if (statusBar) statusBar.innerHTML = '拆除并崩塌后续路径';
+}
+
+function markAsEndpoint(voxelCoord) {
+    var idx = -1;
+    for (var i = 0; i < D3State.pathPoints.length; i++) {
+        if (D3State.isSnapEqual(D3State.pathPoints[i], voxelCoord)) { idx = i; break; }
+    }
+    if (idx < 0) { if (statusBar) statusBar.innerHTML = '请先放置该方块'; return; }
+    D3State.pathPoints[idx].type = 'ZD';
+    collapseAfterIndex(idx);
+    if (statusBar) statusBar.innerHTML = '终点已标记 @ 体素(' + voxelCoord.x + ', ' + voxelCoord.y + ', ' + voxelCoord.z + ')';
+}
+
+/* ========== 按钮事件 ========== */
+function bindEvents() {
+    document.getElementById('parseBtn').addEventListener('click', function() {
+        var text = coordInput.value.trim();
+        if (!text) { statusBar.innerHTML = '请输入坐标指令'; return; }
+        var points = parseCoordText(text);
+        if (points.length === 0) return;
+        var hasQD = false, hasZD = false;
+        for (var i = 0; i < points.length; i++) {
+            if (points[i].type === 'QD') hasQD = true;
+            if (points[i].type === 'ZD') hasZD = true;
+        }
+        if (!hasQD || !hasZD) { statusBar.innerHTML = '缺少起点(QD)或终点(ZD)'; return; }
+        D3State.pathPoints = points;
+        refreshSceneVisuals();
+        statusBar.innerHTML = '路径已更新 | ' + points.length + '个点';
+        outputArea.textContent = '路径已更新，点击"生成指令包"查看详情。';
+    });
+    document.getElementById('generatePkgBtn').addEventListener('click', function() {
+        if (D3State.pathPoints.length < 2) { outputArea.textContent = '路径点不足'; return; }
+        var pkg = generatePackage(D3State.pathPoints);
+        if (pkg) { outputArea.textContent = pkg; statusBar.innerHTML = '指令包已生成'; }
+    });
+    document.getElementById('copyPkgBtn').addEventListener('click', function() {
+        var t = outputArea.textContent;
+        if (t && t !== '等待输入坐标...' && t.indexOf('❌') === -1 && t.indexOf('路径已更新') === -1) {
+            navigator.clipboard.writeText(t).then(function() { statusBar.innerHTML = '已复制'; }).catch(function() { statusBar.innerHTML = '复制失败'; });
+        } else { statusBar.innerHTML = '请先生成指令包'; }
+    });
+    document.getElementById('clearAnchorBtn').addEventListener('click', function() {
+        if (D3State.scene) { for (var i = 0; i < D3State.anchorMeshes.length; i++) { D3State.scene.remove(D3State.anchorMeshes[i]); } D3State.anchorMeshes = []; }
+        D3State.manualPlaceOrder = [];
+        statusBar.innerHTML = '锚点已清除';
+    });
+    document.getElementById('resetPathBtn').addEventListener('click', function() {
+        D3State.pathPoints = []; D3State.manualPlaceOrder = [];
+        if (D3State.scene) {
+            if (D3State.pathLine) { D3State.scene.remove(D3State.pathLine); D3State.pathLine = null; }
+            if (D3State.arrowMesh) { D3State.scene.remove(D3State.arrowMesh); D3State.arrowMesh = null; }
+            for (var i = 0; i < D3State.anchorMeshes.length; i++) { D3State.scene.remove(D3State.anchorMeshes[i]); }
+            D3State.anchorMeshes = [];
+        }
+        coordInput.value = ''; outputArea.textContent = '等待输入坐标...'; statusBar.innerHTML = '路径已重置';
+    });
+    document.getElementById('globalResetBtn').addEventListener('click', function() {
+        document.getElementById('resetPathBtn').click();
+        document.getElementById('voxelAB').value = '22'; document.getElementById('voxelAD').value = '22'; document.getElementById('voxelAE').value = '22';
+        document.getElementById('meterAB').value = '3.0'; document.getElementById('meterAD').value = '4.0'; document.getElementById('meterAE').value = '2.5';
+        D3State.voxelCountAB = 22; D3State.voxelCountAD = 22; D3State.voxelCountAE = 22;
+        D3State.meterAB = 3.0; D3State.meterAD = 4.0; D3State.meterAE = 2.5; D3State.calcVoxelSize();
+        D3State.lockTranslate = D3State.lockRotate = D3State.lockScale = false;
+        var lockBtns = document.querySelectorAll('.lock-active');
+        for (var i = 0; i < lockBtns.length; i++) { lockBtns[i].classList.remove('lock-active'); }
+        document.getElementById('faceOpacitySlider').value = 35; document.getElementById('gridOpacitySlider').value = 50;
+        D3State.opacityFace = 0.35; D3State.opacityGrid = 0.5;
+        if (typeof updateBoxAppearance === 'function') updateBoxAppearance();
+        if (D3State.externalCamera) { D3State.externalCamera.position.set(8,5,8); D3State.externalCamera.lookAt(0,0,0); D3State.externalControls.target.set(0,0,0); D3State.externalControls.update(); }
+        if (D3State.internalCamera) {
+            var rc = D3State.getVoxelRenderCenter({x:0,y:0,z:0});
+            D3State.internalCamera.position.set(rc.x, rc.y, rc.z + 3);
+            D3State.internalCamera.lookAt(rc.x, rc.y, rc.z);
+            D3State.internalPitch = 0; D3State.internalYaw = 0;
+        }
+        statusBar.innerHTML = '全部已重置';
+    });
+}
+
+/* ========== 不透明度 ========== */
+function updateBoxAppearance() {
+    if (D3State.boxMesh) D3State.boxMesh.material.opacity = D3State.opacityFace;
+    if (D3State.gridLines) { for (var i = 0; i < D3State.gridLines.children.length; i++) { D3State.gridLines.children[i].material.opacity = D3State.opacityGrid; } }
+}
+
+/* ========== 锁定控制 ========== */
+function bindLockButtons() {
+    document.getElementById('lockTranslateBtn').addEventListener('click', function(){ D3State.lockTranslate = !D3State.lockTranslate; if(D3State.lockTranslate)this.classList.add('lock-active');else this.classList.remove('lock-active'); });
+    document.getElementById('lockRotateBtn').addEventListener('click', function(){ D3State.lockRotate = !D3State.lockRotate; if(D3State.lockRotate)this.classList.add('lock-active');else this.classList.remove('lock-active'); });
+    document.getElementById('lockScaleBtn').addEventListener('click', function(){ D3State.lockScale = !D3State.lockScale; if(D3State.lockScale)this.classList.add('lock-active');else this.classList.remove('lock-active'); });
+}
+
+/* ========== 指令发送 ========== */
+function bindSendButtons() {
+    document.getElementById('sendBLEBtn').addEventListener('click', function() {
+        var pkg = outputArea.textContent;
+        if (!pkg || pkg === '等待输入坐标...' || pkg.indexOf('❌') === 0 || pkg.indexOf('路径已更新') === 0) { statusBar.innerHTML = '请先生成指令包'; return; }
+        navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: ['0000ffe0-0000-1000-8000-00805f9b34fb'] })
+            .then(function(device) { return device.gatt.connect(); })
+            .then(function(server) { return server.getPrimaryService('0000ffe0-0000-1000-8000-00805f9b34fb'); })
+            .then(function(service) { return service.getCharacteristic('0000ffe1-0000-1000-8000-00805f9b34fb'); })
+            .then(function(characteristic) { return characteristic.writeValue(new TextEncoder().encode(pkg)); })
+            .then(function() { statusBar.innerHTML = '蓝牙发送成功'; showSendStatus(true); })
+            .catch(function(err) { statusBar.innerHTML = '蓝牙发送失败: ' + err.message; showSendStatus(false); });
+    });
+    document.getElementById('sendWifiBtn').addEventListener('click', function() {
+        var pkg = outputArea.textContent;
+        if (!pkg || pkg === '等待输入坐标...' || pkg.indexOf('❌') === 0 || pkg.indexOf('路径已更新') === 0) { statusBar.innerHTML = '请先生成指令包'; return; }
+        var ip = prompt('请输入无人机IP地址和端口\n例如: 192.168.1.100:8080', '192.168.1.100:8080');
+        if (!ip) return;
+        try {
+            var ws = new WebSocket('ws://' + ip);
+            ws.onopen = function() { ws.send(JSON.stringify({ type:'d3_command', data:pkg, timestamp:Date.now() })); statusBar.innerHTML = 'WiFi发送成功'; showSendStatus(true); ws.close(); };
+            ws.onerror = function() { statusBar.innerHTML = 'WiFi连接失败'; showSendStatus(false); };
+        } catch(err) { statusBar.innerHTML = 'WiFi发送失败: ' + err.message; showSendStatus(false); }
+    });
+}
+function showSendStatus(ok) {
+    var el = document.getElementById('sendStatus'); el.style.display = 'inline-block';
+    el.className = 'send-status ' + (ok?'ok':'err'); el.textContent = ok?'发送成功':'发送失败';
+    setTimeout(function() { el.style.display = 'none'; }, 3000);
+}
+
+/* ========== Tab切换 ========== */
+var activeRenderLoops = { external:false, internal:false, manhattan:false, video:false };
+function stopRenderLoop(name) {
+    if (name === 'external' && D3State.externalAnimId) { cancelAnimationFrame(D3State.externalAnimId); D3State.externalAnimId = null; activeRenderLoops.external = false; }
+    if (name === 'internal' && D3State.internalAnimId) { cancelAnimationFrame(D3State.internalAnimId); D3State.internalAnimId = null; activeRenderLoops.internal = false; }
+    if (name === 'manhattan' && D3State.manhattanAnimId) { cancelAnimationFrame(D3State.manhattanAnimId); D3State.manhattanAnimId = null; activeRenderLoops.manhattan = false; }
+}
+function startRenderLoop(name) {
+    if (name === 'external' && !activeRenderLoops.external && D3State.externalRenderer && D3State.externalCamera) {
+        activeRenderLoops.external = true;
+        (function loop() { if(!activeRenderLoops.external) return; D3State.externalRenderer.render(D3State.scene, D3State.externalCamera); D3State.externalAnimId = requestAnimationFrame(loop); })();
+    }
+    if (name === 'internal' && !activeRenderLoops.internal && D3State.internalRenderer && D3State.internalCamera) {
+        if (!D3State.internalReady) { if(statusBar) statusBar.innerHTML = '内部窗口正在初始化，请稍后再试...'; return; }
+        activeRenderLoops.internal = true;
+        (function loop() { if(!activeRenderLoops.internal) return; if(typeof updateInternalMovement === 'function') updateInternalMovement(); D3State.internalRenderer.render(D3State.scene, D3State.internalCamera); D3State.internalAnimId = requestAnimationFrame(loop); })();
+    }
+    if (name === 'manhattan' && !activeRenderLoops.manhattan) { activeRenderLoops.manhattan = true; if(typeof drawManhattanWindow === 'function') drawManhattanWindow(); activeRenderLoops.manhattan = false; }
+}
+
+/* ========== 二维曼哈顿 ========== */
+function drawManhattanWindow() {
+    var canvas = document.getElementById('manhattanCanvas');
+    if (!canvas) return;
+    var w = document.getElementById('windowContainer').clientWidth;
+    var h = document.getElementById('windowContainer').clientHeight;
+    canvas.width = w; canvas.height = h;
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0,0,w,h); ctx.fillStyle = '#121420'; ctx.fillRect(0,0,w,h);
+    var gs = 15, cols = Math.floor(w/gs), rows = Math.floor(h/gs);
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 0.5;
+    for (var i=0;i<=cols;i++) { ctx.beginPath(); ctx.moveTo(i*gs,0); ctx.lineTo(i*gs,rows*gs); ctx.stroke(); }
+    for (var j=0;j<=rows;j++) { ctx.beginPath(); ctx.moveTo(0,j*gs); ctx.lineTo(cols*gs,j*gs); ctx.stroke(); }
+    if (D3State.pathPoints.length > 0) {
+        ctx.strokeStyle = '#ff3333'; ctx.lineWidth = 2; ctx.beginPath();
+        var sx = w/D3State.voxelCountAB, sz = h/D3State.voxelCountAD;
+        ctx.moveTo(D3State.pathPoints[0].x*sx, D3State.pathPoints[0].z*sz);
+        for (var k=1;k<D3State.pathPoints.length;k++) { ctx.lineTo(D3State.pathPoints[k].x*sx, D3State.pathPoints[k].z*sz); }
+        ctx.stroke();
+    }
+    ctx.fillStyle = '#fff'; ctx.font = '12px monospace'; ctx.fillText('二维曼哈顿俯视图', 10, 20);
+}
+
+/* ========== 内部窗口移动 ========== */
+function updateInternalMovement() {
+    if (!D3State.internalCamera) return;
+    var speed = 0.15;
+    var forward = new THREE.Vector3(0,0,-1).applyQuaternion(D3State.internalCamera.quaternion);
+    forward.y = 0; forward.normalize();
+    var right = new THREE.Vector3(1,0,0).applyQuaternion(D3State.internalCamera.quaternion);
+    right.y = 0; right.normalize();
+    if (D3State.internalMoveForward) D3State.internalCamera.position.addScaledVector(forward, speed);
+    if (D3State.internalMoveBack) D3State.internalCamera.position.addScaledVector(forward, -speed);
+    if (D3State.internalMoveRight) D3State.internalCamera.position.addScaledVector(right, speed);
+    if (D3State.internalMoveLeft) D3State.internalCamera.position.addScaledVector(right, -speed);
+    if (D3State.internalMoveUp) D3State.internalCamera.position.y += speed;
+    if (D3State.internalMoveDown) D3State.internalCamera.position.y -= speed;
+    var coordsEl = document.getElementById('internalCoords');
+    if (coordsEl) {
+        var vc = D3State.worldToVoxel(D3State.internalCamera.position.x, D3State.internalCamera.position.y, D3State.internalCamera.position.z);
+        coordsEl.textContent = '体素(' + vc.x + ', ' + vc.y + ', ' + vc.z + ')';
+    }
+}
+
+/* ========== 内部窗口交互 ========== */
+function setupInternalControls() {
+    var intPanel = document.getElementById('internalPanel');
+    if (!intPanel) return;
+    window.addEventListener('keydown', function(e) {
+        if (!document.getElementById('internalPanel').classList.contains('active')) return;
+        switch(e.key.toLowerCase()) {
+            case 'w': D3State.internalMoveForward = true; e.preventDefault(); break;
+            case 's': D3State.internalMoveBack = true; e.preventDefault(); break;
+            case 'a': D3State.internalMoveLeft = true; e.preventDefault(); break;
+            case 'd': D3State.internalMoveRight = true; e.preventDefault(); break;
+            case 'q': D3State.internalMoveDown = true; e.preventDefault(); break;
+            case 'e': D3State.internalMoveUp = true; e.preventDefault(); break;
+        }
+    });
+    window.addEventListener('keyup', function(e) {
+        switch(e.key.toLowerCase()) {
+            case 'w': D3State.internalMoveForward = false; e.preventDefault(); break;
+            case 's': D3State.internalMoveBack = false; e.preventDefault(); break;
+            case 'a': D3State.internalMoveLeft = false; e.preventDefault(); break;
+            case 'd': D3State.internalMoveRight = false; e.preventDefault(); break;
+            case 'q': D3State.internalMoveDown = false; e.preventDefault(); break;
+            case 'e': D3State.internalMoveUp = false; e.preventDefault(); break;
+        }
+    });
+    var modeIndicator = document.getElementById('internalMode');
+    window.addEventListener('keydown', function(e) {
+        if (!document.getElementById('internalPanel').classList.contains('active')) return;
+        if (e.key === '1') { D3State.internalMode = 'place'; if(modeIndicator) modeIndicator.textContent = '放置模式'; e.preventDefault(); }
+        else if (e.key === '0') { D3State.internalMode = 'remove'; if(modeIndicator) modeIndicator.textContent = '拆除模式'; e.preventDefault(); }
+        else if (e.key === '8') { D3State.internalMode = 'endpoint'; if(modeIndicator) modeIndicator.textContent = '终点模式'; e.preventDefault(); }
+        else if (e.key === 'Escape') { D3State.internalMode = 'observe'; if(modeIndicator) modeIndicator.textContent = '观察模式'; e.preventDefault(); }
+    });
+    intPanel.addEventListener('pointerdown', function(e) { D3State.internalMouseDown = true; D3State.internalLastMouseX = e.clientX; D3State.internalLastMouseY = e.clientY; intPanel.setPointerCapture(e.pointerId); e.preventDefault(); });
+    window.addEventListener('pointermove', function(e) {
+        if (!D3State.internalMouseDown) return;
+        if (!document.getElementById('internalPanel').classList.contains('active')) return;
+        var dx = e.clientX - D3State.internalLastMouseX, dy = e.clientY - D3State.internalLastMouseY;
+        D3State.internalLastMouseX = e.clientX; D3State.internalLastMouseY = e.clientY;
+        D3State.internalYaw -= dx * 0.002; D3State.internalPitch -= dy * 0.002;
+        D3State.internalPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, D3State.internalPitch));
+        var q = new THREE.Quaternion(); q.setFromEuler(new THREE.Euler(D3State.internalPitch, D3State.internalYaw, 0, 'YXZ'));
+        D3State.internalCamera.quaternion.copy(q);
+    });
+    window.addEventListener('pointerup', function() { D3State.internalMouseDown = false; });
+    intPanel.addEventListener('click', function(e) {
+        if (D3State.internalMode === 'observe') return;
+        if (!D3State.scene || !D3State.boxMesh) return;
+        var raycaster = new THREE.Raycaster();
+        var mouse = new THREE.Vector2();
+        var rect = intPanel.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(mouse, D3State.internalCamera);
+        var intersects = raycaster.intersectObjects([D3State.boxMesh], false);
+        if (intersects.length > 0) {
+            var point = intersects[0].point;
+            var vc = D3State.worldToVoxel(point.x, point.y, point.z);
+            if (D3State.internalMode === 'place') { addManualPoint(vc); }
+            else if (D3State.internalMode === 'remove') { removePointByVoxel(vc); }
+            else if (D3State.internalMode === 'endpoint') {
+                var key = vc.x + ',' + vc.y + ',' + vc.z;
+                D3State.endpointClickCount[key] = (D3State.endpointClickCount[key] || 0) + 1;
+                if (D3State.endpointClickCount[key] >= 3) { markAsEndpoint(vc); D3State.endpointClickCount = {}; }
+                else { if(statusBar) statusBar.innerHTML = '终点模式：已点击 ' + D3State.endpointClickCount[key] + ' 次，需3次确认'; }
+            }
+        }
+    });
+}
+
+/* ========== Three.js场景 ========== */
+function initThreeScene() {
+    if (typeof THREE === 'undefined') { setTimeout(initThreeScene, 500); return; }
+    D3State.scene = new THREE.Scene();
+    var extPanel = document.getElementById('externalPanel');
+    D3State.externalRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    D3State.externalRenderer.setSize(extPanel.clientWidth, extPanel.clientHeight);
+    D3State.externalRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    extPanel.appendChild(D3State.externalRenderer.domElement);
+    D3State.externalRenderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+    D3State.externalCamera = new THREE.PerspectiveCamera(50, extPanel.clientWidth/extPanel.clientHeight, 0.1, 100);
+    D3State.externalCamera.position.set(8,5,8); D3State.externalCamera.lookAt(0,0,0);
+    D3State.externalControls = createOrbitControls(D3State.externalCamera, D3State.externalRenderer.domElement);
+    var intPanel = document.getElementById('internalPanel');
+    D3State.internalRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    D3State.internalRenderer.setSize(intPanel.clientWidth, intPanel.clientHeight);
+    D3State.internalRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    intPanel.appendChild(D3State.internalRenderer.domElement);
+    D3State.internalRenderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+    D3State.internalCamera = new THREE.PerspectiveCamera(70, intPanel.clientWidth/intPanel.clientHeight, 0.01, 100);
+    var rc = D3State.getVoxelRenderCenter({x:0,y:0,z:0});
+    D3State.internalCamera.position.set(rc.x, rc.y, rc.z + 3);
+    D3State.internalCamera.lookAt(rc.x, rc.y, rc.z);
+    D3State.internalReady = true;
+    D3State.scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    var dl = new THREE.DirectionalLight(0xffffff, 0.4); dl.position.set(10,10,10); D3State.scene.add(dl);
+    rebuildBoxAndGrid();
+    setupInternalControls();
+    startRenderLoop('external');
+    window.addEventListener('resize', function() {
+        if (D3State.externalRenderer) { var w=extPanel.clientWidth, h=extPanel.clientHeight; D3State.externalRenderer.setSize(w,h); D3State.externalCamera.aspect=w/h; D3State.externalCamera.updateProjectionMatrix(); }
+        if (D3State.internalRenderer) { var w=intPanel.clientWidth, h=intPanel.clientHeight; D3State.internalRenderer.setSize(w,h); D3State.internalCamera.aspect=w/h; D3State.internalCamera.updateProjectionMatrix(); }
+    });
+    if(statusBar) statusBar.innerHTML = 'D3-真实承诺 v1.6 就绪 | 体素坐标整数化';
+}
+
+function rebuildBoxAndGrid() {
+    if (!D3State.scene) return;
+    if (D3State.boxMesh) D3State.scene.remove(D3State.boxMesh);
+    if (D3State.gridLines) D3State.scene.remove(D3State.gridLines);
+    if (D3State.redMidpoint) D3State.scene.remove(D3State.redMidpoint);
+    var bw = D3State.voxelCountAB * D3State.voxelSizeAB;
+    var bh = D3State.voxelCountAE * D3State.voxelSizeAE;
+    var bd = D3State.voxelCountAD * D3State.voxelSizeAD;
+    D3State.boxMesh = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), new THREE.MeshBasicMaterial({ color: 0x4682c8, transparent: true, opacity: D3State.opacityFace, side: THREE.DoubleSide }));
+    D3State.scene.add(D3State.boxMesh);
+    var gridGroup = new THREE.Group();
+    for (var ix=0;ix<=D3State.voxelCountAB;ix++) {
+        var x = -bw/2 + ix*D3State.voxelSizeAB;
+        var geo = new THREE.BufferGeometry().setFromPoints([ new THREE.Vector3(x,-bh/2,-bd/2),new THREE.Vector3(x,bh/2,-bd/2),new THREE.Vector3(x,bh/2,bd/2),new THREE.Vector3(x,-bh/2,bd/2),new THREE.Vector3(x,-bh/2,-bd/2)]);
+        gridGroup.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color:0x000000, transparent:true, opacity:D3State.opacityGrid })));
+    }
+    for (var iz=0;iz<=D3State.voxelCountAD;iz++) {
+        var z = -bd/2 + iz*D3State.voxelSizeAD;
+        var geo = new THREE.BufferGeometry().setFromPoints([ new THREE.Vector3(-bw/2,-bh/2,z),new THREE.Vector3(bw/2,-bh/2,z),new THREE.Vector3(bw/2,bh/2,z),new THREE.Vector3(-bw/2,bh/2,z),new THREE.Vector3(-bw/2,-bh/2,z)]);
+        gridGroup.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color:0x000000, transparent:true, opacity:D3State.opacityGrid })));
+    }
+    for (var iy=0;iy<=D3State.voxelCountAE;iy++) {
+        var y = -bh/2 + iy*D3State.voxelSizeAE;
+        var geo = new THREE.BufferGeometry().setFromPoints([ new THREE.Vector3(-bw/2,y,-bd/2),new THREE.Vector3(bw/2,y,-bd/2),new THREE.Vector3(bw/2,y,bd/2),new THREE.Vector3(-bw/2,y,bd/2),new THREE.Vector3(-bw/2,y,-bd/2)]);
+        gridGroup.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color:0x000000, transparent:true, opacity:D3State.opacityGrid })));
+    }
+    D3State.gridLines = gridGroup; D3State.scene.add(gridGroup);
+    var vs = Math.min(D3State.voxelSizeAB, D3State.voxelSizeAD, D3State.voxelSizeAE);
+    var midGeo = new THREE.BoxGeometry(vs, vs, vs);
+    D3State.redMidpoint = new THREE.Mesh(midGeo, new THREE.MeshBasicMaterial({ color:0xff0000 }));
+    D3State.scene.add(D3State.redMidpoint);
+    updateMidpointMarker();
+}
+
+function createOrbitControls(camera, domElement) {
+    var isDown=false, isRightDrag=false, lastX=0, lastY=0;
+    var target = new THREE.Vector3(0,0,0);
+    var spherical = new THREE.Spherical().setFromVector3(new THREE.Vector3().copy(camera.position).sub(target));
+    domElement.addEventListener('pointerdown', function(e) { isRightDrag = (e.button===2||e.button===1); isDown=true; lastX=e.clientX; lastY=e.clientY; e.preventDefault(); });
+    window.addEventListener('pointermove', function(e) {
+        if (!isDown) return;
+        var dx=e.clientX-lastX, dy=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY;
+        if (isRightDrag) {
+            if (D3State.lockTranslate) return;
+            var right = new THREE.Vector3().crossVectors(camera.up, new THREE.Vector3().copy(camera.position).normalize()).normalize();
+            var up = camera.up.clone().normalize();
+            target.add(right.multiplyScalar(-dx*0.01)).add(up.multiplyScalar(dy*0.01));
+        } else {
+            if (D3State.lockRotate) return;
+            spherical.theta -= dx*0.005; spherical.phi -= dy*0.005;
+            spherical.phi = Math.max(0.1, Math.min(Math.PI-0.1, spherical.phi));
+        }
+        var offset = new THREE.Vector3().setFromSpherical(spherical);
+        camera.position.copy(target).add(offset); camera.lookAt(target);
+    });
+    window.addEventListener('pointerup', function() { isDown=false; isRightDrag=false; });
+    domElement.addEventListener('wheel', function(e) {
+        if (D3State.lockScale) return;
+        spherical.radius *= (e.deltaY>0)?1.05:0.95;
+        spherical.radius = Math.max(0.05, Math.min(50, spherical.radius));
+        var offset = new THREE.Vector3().setFromSpherical(spherical);
+        camera.position.copy(target).add(offset); camera.lookAt(target);
+        e.preventDefault();
+    });
+    domElement.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+    return { target: target, update: function() { spherical.setFromVector3(new THREE.Vector3().copy(camera.position).sub(target)); } };
+}
+
+/* ========== 启动 ========== */
+window.addEventListener('DOMContentLoaded', function() {
+    try {
+        initThreeScene();
+        bindEvents(); bindLockButtons(); bindSendButtons();
+        var tabBtns = document.querySelectorAll('.tab-btn');
+        var panels = document.querySelectorAll('.window-panel');
+        tabBtns.forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var target = this.dataset.panel;
+                var old = document.querySelector('.tab-btn.active');
+                if (old) stopRenderLoop(old.dataset.panel);
+                tabBtns.forEach(function(b) { b.classList.remove('active'); });
+                this.classList.add('active');
+                panels.forEach(function(p) { p.classList.remove('active'); });
+                document.getElementById(target + 'Panel').classList.add('active');
+                startRenderLoop(target);
+            });
+        });
+        document.querySelectorAll('.window-reset-btn').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var win = this.dataset.window;
+                if (win === 'external' && D3State.externalCamera) {
+                    D3State.externalCamera.position.set(8,5,8); D3State.externalCamera.lookAt(0,0,0);
+                    D3State.externalControls.target.set(0,0,0); D3State.externalControls.update();
+                    statusBar.innerHTML = '外部视角已重置';
+                } else if (win === 'internal' && D3State.internalCamera) {
+                    var rc = D3State.getVoxelRenderCenter({x:0,y:0,z:0});
+                    D3State.internalCamera.position.set(rc.x, rc.y, rc.z + 3);
+                    D3State.internalCamera.lookAt(rc.x, rc.y, rc.z);
+                    D3State.internalPitch = 0; D3State.internalYaw = 0;
+                    statusBar.innerHTML = '内部视角已重置';
+                } else if (win === 'manhattan') { drawManhattanWindow(); statusBar.innerHTML = '曼哈顿窗口已重置'; }
+                else if (win === 'video') { statusBar.innerHTML = '视频流窗口已重置'; }
+            });
+        });
+        document.getElementById('faceOpacitySlider').addEventListener('input', function() { D3State.opacityFace = parseInt(this.value)/100; updateBoxAppearance(); });
+        document.getElementById('gridOpacitySlider').addEventListener('input', function() { D3State.opacityGrid = parseInt(this.value)/100; updateBoxAppearance(); });
+        ['voxelAB','voxelAD','voxelAE','meterAB','meterAD','meterAE'].forEach(function(id) {
+            var el = document.getElementById(id);
+            el.addEventListener('blur', updateWorldParams);
+            el.addEventListener('change', updateWorldParams);
+        });
+        var video = document.getElementById('cameraFeed');
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                .then(function(stream) { video.srcObject = stream; })
+                .catch(function(err) { console.warn('摄像头无权限', err); });
+        }
+        document.getElementById('helpBtn').addEventListener('click', function() { document.getElementById('helpModal').classList.add('show'); });
+        document.getElementById('closeHelpBtn').addEventListener('click', function() { document.getElementById('helpModal').classList.remove('show'); });
+        document.getElementById('helpModal').addEventListener('click', function(e) { if (e.target === e.currentTarget) e.currentTarget.classList.remove('show'); });
+        if(statusBar) statusBar.innerHTML = 'D3-真实承诺 v1.6 就绪 | 体素坐标整数化';
+    } catch(e) { if(statusBar) statusBar.innerHTML = '初始化错误: ' + e.message; console.error(e); }
+});
+
+function updateWorldParams() {
+    var vab = parseInt(document.getElementById('voxelAB').value);
+    var vad = parseInt(document.getElementById('voxelAD').value);
+    var vae = parseInt(document.getElementById('voxelAE').value);
+    var mab = parseFloat(document.getElementById('meterAB').value);
+    var mad = parseFloat(document.getElementById('meterAD').value);
+    var mae = parseFloat(document.getElementById('meterAE').value);
+    if (isNaN(vab) || vab < 2) vab = 2; if (vab > 33) vab = 33;
+    if (isNaN(vad) || vad < 2) vad = 2; if (vad > 33) vad = 33;
+    if (isNaN(vae) || vae < 2) vae = 2; if (vae > 33) vae = 33;
+    if (isNaN(mab) || mab <= 0) mab = 3.0;
+    if (isNaN(mad) || mad <= 0) mad = 4.0;
+    if (isNaN(mae) || mae <= 0) mae = 2.5;
+    document.getElementById('voxelAB').value = vab;
+    document.getElementById('voxelAD').value = vad;
+    document.getElementById('voxelAE').value = vae;
+    document.getElementById('meterAB').value = mab;
+    document.getElementById('meterAD').value = mad;
+    document.getElementById('meterAE').value = mae;
+    D3State.voxelCountAB = vab; D3State.voxelCountAD = vad; D3State.voxelCountAE = vae;
+    D3State.meterAB = mab; D3State.meterAD = mad; D3State.meterAE = mae;
+    D3State.calcVoxelSize();
+    rebuildBoxAndGrid();
+    refreshSceneVisuals();
+}
+</script>
+</body>
+</html>

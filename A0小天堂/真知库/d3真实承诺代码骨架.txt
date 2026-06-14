@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, touch-action: manipulation">
+    <title>D3-真实承诺 · 体素坐标流控制系统</title>
+    <style>
+        * {
+            user-select: none;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            background: #0d0f18;
+            color: #eef;
+            font-family: 'Segoe UI', system-ui, monospace;
+            margin: 0;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            touch-action: manipulation;
+        }
+
+        /* 主容器 */
+        .main-container {
+            width: 100%;
+            max-width: 600px;
+        }
+
+        /* Tab导航栏 */
+        .tab-nav {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 12px;
+            background: #1a1c2a;
+            border-radius: 30px;
+            padding: 4px;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 10px 8px;
+            border-radius: 26px;
+            background: transparent;
+            color: #889;
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: bold;
+            transition: 0.2s;
+            white-space: nowrap;
+        }
+        .tab-btn.active {
+            background: #2e3a5c;
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        }
+
+        /* 窗口容器 */
+        .window-container {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            background: #121420;
+            border-radius: 24px;
+            box-shadow: 0 8px 28px rgba(0,0,0,0.6);
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+        .window-panel {
+            display: none;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .window-panel.active {
+            display: block;
+        }
+
+        /* 视频窗口 */
+        #videoPanel video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Canvas窗口 */
+        #externalPanel canvas,
+        #internalPanel canvas,
+        #manhattanPanel canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* 底部控制面板 */
+        .control-panel {
+            width: 100%;
+            max-width: 600px;
+            background: #1a1c2a;
+            padding: 16px;
+            border-radius: 22px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+            border: 1px solid #2b2d3e;
+        }
+        .control-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .control-row label {
+            font-size: 14px;
+            font-weight: bold;
+            color: #cbd;
+            min-width: 50px;
+        }
+        input[type="text"],
+        input[type="number"] {
+            flex: 1;
+            background: #0a0c16;
+            border: 1px solid #3a3c58;
+            color: #ffdf8c;
+            padding: 10px;
+            border-radius: 30px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 14px;
+            min-width: 80px;
+        }
+        button {
+            background: #2a2c42;
+            border: none;
+            color: white;
+            padding: 10px 18px;
+            border-radius: 30px;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+            transition: 0.12s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            white-space: nowrap;
+        }
+        button:active {
+            transform: scale(0.95);
+            background: #3f4160;
+        }
+        button.primary {
+            background: #3a5f8c;
+        }
+        button.danger {
+            background: #6b3a3a;
+        }
+
+        /* 指令包输出区域 */
+        .output-area {
+            background: #0b0c18;
+            padding: 12px 14px;
+            border-radius: 16px;
+            font-family: monospace;
+            font-size: 12px;
+            border-left: 4px solid #ffb347;
+            word-break: break-word;
+            line-height: 1.5;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            color: #ddd;
+        }
+
+        /* 状态栏 */
+        .status-bar {
+            background: #0b0c18;
+            padding: 10px 14px;
+            border-radius: 20px;
+            font-family: monospace;
+            font-size: 12px;
+            border-left: 4px solid #3a5f8c;
+            word-break: break-word;
+            margin-top: 8px;
+        }
+
+        /* 使用说明弹窗 */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.show {
+            display: flex;
+        }
+        .modal-content {
+            background: #1a1c2a;
+            border-radius: 20px;
+            padding: 20px;
+            max-width: 500px;
+            max-height: 70vh;
+            overflow-y: auto;
+            color: #eef;
+            font-size: 13px;
+            line-height: 1.6;
+            border: 1px solid #3a3c58;
+            margin: 20px;
+        }
+        .modal-content h2 {
+            margin-top: 0;
+            color: #ffb347;
+        }
+        .modal-content h3 {
+            color: #7ec8ff;
+            margin-top: 16px;
+        }
+        .modal-close {
+            background: #3a5f8c;
+            margin-top: 12px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+<div class="main-container">
+    <!-- Tab导航 -->
+    <div class="tab-nav">
+        <button class="tab-btn active" data-panel="external">🧊 三维外部</button>
+        <button class="tab-btn" data-panel="internal">🏠 三维内部</button>
+        <button class="tab-btn" data-panel="manhattan">📐 二维曼哈顿</button>
+        <button class="tab-btn" data-panel="video">📷 视频流</button>
+    </div>
+
+    <!-- 窗口容器 -->
+    <div class="window-container">
+        <!-- 三维外部窗口 -->
+        <div class="window-panel active" id="externalPanel">
+            <canvas id="externalCanvas"></canvas>
+        </div>
+        <!-- 三维内部窗口 -->
+        <div class="window-panel" id="internalPanel">
+            <canvas id="internalCanvas"></canvas>
+        </div>
+        <!-- 二维曼哈顿窗口 -->
+        <div class="window-panel" id="manhattanPanel">
+            <canvas id="manhattanCanvas"></canvas>
+        </div>
+        <!-- 视频流窗口 -->
+        <div class="window-panel" id="videoPanel">
+            <video id="cameraFeed" autoplay playsinline muted></video>
+        </div>
+    </div>
+</div>
+
+<!-- 底部控制面板 -->
+<div class="control-panel">
+    <!-- 文本输入区域 -->
+    <div class="control-row">
+        <label>📝 坐标指令</label>
+        <input type="text" id="coordInput" placeholder="QD(0,0,0) D2(5,0,0) ZD(10,10,5)" style="flex:3;">
+    </div>
+    <div class="control-row">
+        <button class="primary" id="parseBtn">✅ 解析并生成路径</button>
+        <button class="danger" id="clearAnchorBtn">🗑️ 清除锚点</button>
+        <button id="resetPathBtn">🔄 重置路径</button>
+    </div>
+
+    <!-- 指令包输出 -->
+    <div class="control-row">
+        <button id="generatePkgBtn">📦 生成指令包</button>
+        <button id="copyPkgBtn">📋 复制指令包</button>
+    </div>
+    <div class="output-area" id="outputArea">等待输入坐标...</div>
+
+    <!-- 状态栏 -->
+    <div class="status-bar" id="statusBar">✅ 就绪 | 输入坐标后点击"解析并生成路径"</div>
+
+    <!-- 底部按钮行 -->
+    <div class="control-row" style="margin-top:8px;">
+        <button id="helpBtn">📖 使用说明</button>
+    </div>
+</div>
+
+<!-- 使用说明弹窗 -->
+<div class="modal-overlay" id="helpModal">
+    <div class="modal-content">
+        <h2>D3-真实承诺 · 使用说明</h2>
+        <h3>一、坐标系定义</h3>
+        <p>右手笛卡尔坐标系（《我的世界》同款）：</p>
+        <ul>
+            <li><b>X轴</b>：向东（AB方向）</li>
+            <li><b>Y轴</b>：向上（AA1方向，高度）</li>
+            <li><b>Z轴</b>：向南（AD方向）</li>
+        </ul>
+        <p><b>原点(0,0,0)</b>：长方体的绝对中点，吸附在最近体素左上角。</p>
+        
+        <h3>二、体素铁律</h3>
+        <ul>
+            <li>只有正方体的<b>左上角角坐标</b>才是有效坐标。</li>
+            <li>体素永远是正方体，不变形。</li>
+            <li>精度 = 真实物理距离 ÷ 正方体数量。</li>
+        </ul>
+
+        <h3>三、路径坐标格式</h3>
+        <p>起点：<code>QD(x,y,z)</code></p>
+        <p>中间点：<code>D2(x,y,z)</code>, <code>D3(x,y,z)</code> ...</p>
+        <p>终点：<code>ZD(x,y,z)</code></p>
+        <p><b>示例</b>：<code>QD(0,0,0) D2(5,0,0) D3(5,10,0) ZD(10,10,5)</code></p>
+
+        <h3>四、特殊触发词</h3>
+        <ul>
+            <li>曼哈顿、直线、循环、往复、跟随、冲撞返回、外部延伸</li>
+        </ul>
+
+        <h3>五、设计哲学</h3>
+        <p>承诺即债务，每一个坐标都是一句承诺，每条路径都是一笔债务，每次发送都是清偿。不反人类的设计，是最高原则。</p>
+
+        <button class="modal-close" id="closeHelpBtn">关闭</button>
+    </div>
+</div>
+
+<script>
+// ==================== 模块0：全局状态管理 ====================
+const D3State = {
+    // 体素世界参数
+    worldSize: { ad: 4, ab: 3, ae: 2.5 },  // 真实物理尺寸（米）
+    voxelCount: { x: 22, z: 22, y: 22 },   // 各方向正方体数量
+    voxelPhysicalSize: { x: 0, z: 0, y: 0 }, // 每个体素的物理边长（自动计算）
+
+    // 路径数据
+    pathPoints: [],  // 路径点数组 [{x, y, z, type: 'QD'|'Dn'|'ZD'}]
+
+    // 锁定状态
+    lockTranslate: false,
+    lockRotate: false,
+    lockScale: false,
+
+    // 外观参数
+    opacityFace: 0.35,     // 长方体面不透明度
+    opacityGrid: 0.5,      // 体素网格线框不透明度
+
+    // 连接状态
+    espConnected: false,
+    wifiConnected: false,
+
+    // 初始化
+    init() {
+        this.calcVoxelSize();
+    },
+
+    // 计算每个体素的物理边长
+    calcVoxelSize() {
+        this.voxelPhysicalSize.x = this.worldSize.ab / this.voxelCount.x;
+        this.voxelPhysicalSize.z = this.worldSize.ad / this.voxelCount.z;
+        this.voxelPhysicalSize.y = this.worldSize.ae / this.voxelCount.y;
+    },
+
+    // 吸附坐标到最近左上角
+    snapToCorner(x, y, z) {
+        const sx = Math.round(x / this.voxelPhysicalSize.x) * this.voxelPhysicalSize.x;
+        const sy = Math.round(y / this.voxelPhysicalSize.y) * this.voxelPhysicalSize.y;
+        const sz = Math.round(z / this.voxelPhysicalSize.z) * this.voxelPhysicalSize.z;
+        return { x: sx, y: sy, z: sz };
+    }
+};
+
+// 初始化
+D3State.init();
+
+// ==================== 模块6：文本输入与路径管理 ====================
+const coordInput = document.getElementById('coordInput');
+const parseBtn = document.getElementById('parseBtn');
+const clearAnchorBtn = document.getElementById('clearAnchorBtn');
+const resetPathBtn = document.getElementById('resetPathBtn');
+const outputArea = document.getElementById('outputArea');
+const statusBar = document.getElementById('statusBar');
+
+// 解析坐标文本
+function parseCoordText(text) {
+    const points = [];
+    // 匹配 QD(x,y,z) / D2(x,y,z) / ZD(x,y,z)
+    const regex = /(QD|D\d+|ZD)\((-?[\d.]+),(-?[\d.]+),(-?[\d.]+)\)/g;
+    let match;
+    const matches = [];
+    while ((match = regex.exec(text)) !== null) {
+        matches.push({
+            type: match[1],
+            x: parseFloat(match[2]),
+            y: parseFloat(match[3]),
+            z: parseFloat(match[4])
+        });
+    }
+
+    // 确保起点QD在最前，终点ZD在最后，中间Dn按数字排序
+    const qdPoints = matches.filter(p => p.type === 'QD');
+    const zdPoints = matches.filter(p => p.type === 'ZD');
+    let dnPoints = matches.filter(p => p.type.startsWith('D') && p.type !== 'QD' && p.type !== 'ZD');
+    dnPoints.sort((a, b) => {
+        const na = parseInt(a.type.substring(1));
+        const nb = parseInt(b.type.substring(1));
+        return na - nb;
+    });
+
+    // 组装：QD → Dn... → ZD
+    const ordered = [...qdPoints, ...dnPoints, ...zdPoints];
+    
+    // 吸附到左上角坐标
+    return ordered.map(p => {
+        const snapped = D3State.snapToCorner(p.x, p.y, p.z);
+        return { ...p, x: snapped.x, y: snapped.y, z: snapped.z };
+    });
+}
+
+// 生成指令包
+function generatePackage(points) {
+    if (points.length < 2) return null;
+
+    let output = '';
+    const pathTypes = [];
+
+    // 判断路径类型（简化版）
+    if (points.length === 2) {
+        pathTypes.push('直线路径');
+    } else if (points.length > 2) {
+        pathTypes.push('自由路径');
+    }
+
+    output += `路径类型：${pathTypes.join(' + ')}\n`;
+    output += `总段数：${points.length - 1}\n`;
+    output += `\n路径坐标清单：\n`;
+    
+    const coordList = points.map(p => `${p.type}(${p.x},${p.y},${p.z})`).join(' → ');
+    output += coordList + '\n\n';
+
+    // 计算每段leg
+    for (let i = 0; i < points.length - 1; i++) {
+        const a = points[i];
+        const b = points[i + 1];
+        const legX = Math.abs(b.x - a.x);
+        const legZ = Math.abs(b.z - a.z);
+        const legY = Math.abs(b.y - a.y);
+        output += `段${i + 1}: legX=${legX.toFixed(2)}m, legZ=${legZ.toFixed(2)}m, legY=${legY.toFixed(2)}m\n`;
+    }
+
+    return output;
+}
+
+// 解析按钮点击
+parseBtn.addEventListener('click', () => {
+    const text = coordInput.value.trim();
+    if (!text) {
+        statusBar.innerHTML = '⚠️ 请输入坐标指令';
+        return;
+    }
+
+    const points = parseCoordText(text);
+    if (points.length === 0) {
+        statusBar.innerHTML = '❌ 未能识别坐标格式，请检查';
+        return;
+    }
+
+    // 检查是否有起点和终点
+    const hasQD = points.some(p => p.type === 'QD');
+    const hasZD = points.some(p => p.type === 'ZD');
+    if (!hasQD || !hasZD) {
+        statusBar.innerHTML = '⚠️ 缺少起点(QD)或终点(ZD)，请补充';
+        return;
+    }
+
+    // 存入全局状态
+    D3State.pathPoints = points;
+    statusBar.innerHTML = `✅ 路径已更新 | ${points.length}个坐标点 | 起点${points[0].type}(${points[0].x},${points[0].y},${points[0].z}) → 终点${points[points.length-1].type}(${points[points.length-1].x},${points[points.length-1].y},${points[points.length-1].z})`;
+    outputArea.textContent = '路径已更新，点击"生成指令包"查看完整指令。';
+});
+
+// 生成指令包按钮
+document.getElementById('generatePkgBtn').addEventListener('click', () => {
+    if (D3State.pathPoints.length < 2) {
+        outputArea.textContent = '❌ 路径点不足，请先解析坐标';
+        return;
+    }
+    const pkg = generatePackage(D3State.pathPoints);
+    if (pkg) {
+        outputArea.textContent = pkg;
+        statusBar.innerHTML = '📦 指令包已生成';
+    }
+});
+
+// 复制指令包
+document.getElementById('copyPkgBtn').addEventListener('click', () => {
+    const text = outputArea.textContent;
+    if (text && text !== '等待输入坐标...' && !text.startsWith('❌') && !text.startsWith('路径已更新')) {
+        navigator.clipboard.writeText(text).then(() => {
+            statusBar.innerHTML = '📋 指令包已复制到剪贴板';
+        }).catch(() => {
+            statusBar.innerHTML = '❌ 复制失败，请手动复制';
+        });
+    } else {
+        statusBar.innerHTML = '⚠️ 请先生成指令包';
+    }
+});
+
+// 清除锚点
+clearAnchorBtn.addEventListener('click', () => {
+    statusBar.innerHTML = '🗑️ 锚点正方体已清除（路径保留）';
+});
+
+// 重置路径
+resetPathBtn.addEventListener('click', () => {
+    D3State.pathPoints = [];
+    coordInput.value = '';
+    outputArea.textContent = '等待输入坐标...';
+    statusBar.innerHTML = '🔄 路径已重置';
+});
+
+// ==================== Tab切换 ====================
+const tabBtns = document.querySelectorAll('.tab-btn');
+const panels = document.querySelectorAll('.window-panel');
+
+tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        const target = btn.dataset.panel;
+        tabBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        panels.forEach(p => p.classList.remove('active'));
+        document.getElementById(target + 'Panel').classList.add('active');
+    });
+});
+
+// ==================== 模块1：视频流窗口 ====================
+const video = document.getElementById('cameraFeed');
+if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        .then(stream => { video.srcObject = stream; })
+        .catch(err => { console.warn('摄像头无权限', err); });
+}
+
+// ==================== 使用说明弹窗 ====================
+const helpBtn = document.getElementById('helpBtn');
+const helpModal = document.getElementById('helpModal');
+const closeHelpBtn = document.getElementById('closeHelpBtn');
+
+helpBtn.addEventListener('click', () => {
+    helpModal.classList.add('show');
+});
+closeHelpBtn.addEventListener('click', () => {
+    helpModal.classList.remove('show');
+});
+helpModal.addEventListener('click', (e) => {
+    if (e.target === helpModal) helpModal.classList.remove('show');
+});
+
+// ==================== 初始化完成 ====================
+statusBar.innerHTML = '✅ D3-真实承诺 就绪 | 输入坐标后点击"解析并生成路径"';
+console.log('D3-真实承诺 · 体素坐标流控制系统 初始化完成');
+</script>
+</body>
+</html>

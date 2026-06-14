@@ -1,0 +1,97 @@
+好，我现在重新给你完整的 Python 文件，一步到位。
+
+---
+
+五个按钮对应五个动作
+
+动作 红外码 文件名
+前进 0x18 forward.wav
+后退 0x52 back.wav
+左转 0x08 left.wav
+右转 0x5A right.wav
+停止 0x1C stop.wav
+
+---
+
+Python 代码（保存为 generate_ir.py）
+
+```python
+import numpy as np
+import soundfile as sf
+
+# 参数
+CARRIER_FREQ = 38000      # 38kHz 载波
+SAMPLE_RATE = 192000      # 采样率（普通声卡支持）
+DURATION = 0.5            # 每个指令持续 0.5 秒
+
+# NEC 协议脉冲序列（单位：微秒）
+# 这是标准 NEC 的格式，你需要根据小车实际调整
+nec_patterns = {
+    'forward': [9000, 4500, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560],
+    'back':    [9000, 4500, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560],
+    'left':    [9000, 4500, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560],
+    'right':   [9000, 4500, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560],
+    'stop':    [9000, 4500, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560, 560],
+}
+
+def generate_wave(name):
+    pattern = nec_patterns[name]
+    total_samples = int(SAMPLE_RATE * DURATION)
+    wave = np.zeros(total_samples, dtype=np.float32)
+    
+    idx = 0
+    is_high = True
+    for pulse_us in pattern:
+        pulse_samples = int(pulse_us * SAMPLE_RATE / 1_000_000)
+        if idx + pulse_samples > total_samples:
+            break
+        if is_high:
+            # 高电平期间：38kHz 方波
+            samples_per_cycle = SAMPLE_RATE / CARRIER_FREQ
+            cycles = int(pulse_samples / samples_per_cycle) + 1
+            for i in range(cycles):
+                start = idx + int(i * samples_per_cycle)
+                end = min(idx + int((i + 0.5) * samples_per_cycle), idx + pulse_samples)
+                wave[start:end] = 0.8  # 幅度 0.8
+        else:
+            # 低电平期间：静音
+            wave[idx:idx + pulse_samples] = 0.0
+        idx += pulse_samples
+        is_high = not is_high
+    
+    wave = wave[:idx]
+    sf.write(f'{name}.wav', wave, SAMPLE_RATE)
+    print(f'生成 {name}.wav')
+
+# 生成所有五个文件
+if __name__ == '__main__':
+    for name in ['forward', 'back', 'left', 'right', 'stop']:
+        generate_wave(name)
+    print('全部生成完毕！')
+```
+
+---
+
+怎么用
+
+1. 把上面代码复制到 VS Code，保存为 generate_ir.py
+2. 在终端运行：
+   ```bash
+   pip install numpy soundfile
+   python generate_ir.py
+   ```
+3. 等几秒钟，当前文件夹就会出现五个 .wav 文件
+
+---
+
+然后
+
+· 电脑耳机孔接红外发射管
+· 双击 forward.wav
+· 小车前进
+
+如果不动，调音量、检查正负极、换播放器。
+
+---
+
+去生成吧，好了告诉我。

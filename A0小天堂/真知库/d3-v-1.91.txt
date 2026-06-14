@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, touch-action: manipulation">
+    <title>D3-真实承诺 · 体素坐标流控制系统 v1.91</title>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <style>
+        * { user-select: none; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { background: #0d0f18; color: #eef; font-family: 'Segoe UI', system-ui, monospace; margin: 0; padding: 8px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; touch-action: manipulation; }
+        .main-container { width: 100%; max-width: 700px; }
+        .tab-nav { display: flex; gap: 4px; margin-bottom: 8px; background: #1a1c2a; border-radius: 30px; padding: 4px; }
+        .tab-btn { flex: 1; padding: 10px 6px; border-radius: 26px; background: transparent; color: #889; border: none; cursor: pointer; font-size: 12px; font-weight: bold; transition: 0.2s; white-space: nowrap; }
+        .tab-btn.active { background: #2e3a5c; color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+        .window-container { width: 100%; aspect-ratio: 1 / 1; background: #121420; border-radius: 20px; box-shadow: 0 8px 28px rgba(0,0,0,0.6); position: relative; overflow: hidden; margin-bottom: 8px; }
+        .window-panel { display: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+        .window-panel.active { display: block; }
+        .window-reset-btn { position: absolute; top: 8px; right: 8px; z-index: 10; background: rgba(0,0,0,0.6); color: #fff; border: 1px solid #555; border-radius: 20px; padding: 4px 10px; font-size: 11px; cursor: pointer; }
+        #videoPanel video { width: 100%; height: 100%; object-fit: cover; }
+        .window-panel canvas { width: 100%; height: 100%; display: block; }
+        .internal-ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 5; }
+        .internal-crosshair { width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.8); border-radius: 50%; pointer-events: none; }
+        .internal-mode-indicator { position: absolute; top: 40px; left: 8px; z-index: 5; background: rgba(0,0,0,0.7); color: #fff; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-family: monospace; }
+        .internal-coords { position: absolute; bottom: 40px; left: 8px; z-index: 5; background: rgba(0,0,0,0.7); color: #ffdf8c; padding: 4px 10px; border-radius: 12px; font-size: 10px; font-family: monospace; }
+        .control-panel { width: 100%; max-width: 700px; background: #1a1c2a; padding: 14px; border-radius: 20px; box-shadow: 0 6px 18px rgba(0,0,0,0.5); border: 1px solid #2b2d3e; margin-bottom: 8px; }
+        .control-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
+        .control-row label { font-size: 12px; font-weight: bold; color: #cbd; min-width: 35px; white-space: nowrap; }
+        input[type="text"], input[type="number"] { flex: 1; background: #0a0c16; border: 1px solid #3a3c58; color: #ffdf8c; padding: 6px 8px; border-radius: 20px; text-align: center; font-weight: bold; font-size: 12px; min-width: 45px; }
+        textarea { flex: 3; background: #0a0c16; border: 1px solid #3a3c58; color: #ffdf8c; padding: 10px 12px; border-radius: 16px; font-weight: bold; font-size: 13px; min-width: 200px; resize: vertical; font-family: monospace; min-height: 60px; }
+        select { flex: 1; background: #0a0c16; border: 1px solid #3a3c58; color: #ffdf8c; padding: 6px 8px; border-radius: 20px; text-align: center; font-weight: bold; font-size: 12px; min-width: 80px; }
+        button { background: #2a2c42; border: none; color: white; padding: 8px 14px; border-radius: 24px; font-weight: bold; font-size: 13px; cursor: pointer; transition: 0.12s; box-shadow: 0 2px 8px rgba(0,0,0,0.4); white-space: nowrap; }
+        button:active { transform: scale(0.95); background: #3f4160; }
+        button.primary { background: #3a5f8c; } button.danger { background: #6b3a3a; } button.success { background: #3a6b4a; }
+        button.lock-active { background: #8c6b3a; box-shadow: 0 0 10px #ffaa33; }
+        .output-area { background: #0b0c18; padding: 10px 12px; border-radius: 14px; font-family: monospace; font-size: 11px; border-left: 4px solid #ffb347; word-break: break-word; line-height: 1.4; max-height: 200px; overflow-y: auto; white-space: pre-wrap; color: #ddd; }
+        .status-bar { background: #0b0c18; padding: 8px 12px; border-radius: 16px; font-family: monospace; font-size: 11px; border-left: 4px solid #3a5f8c; word-break: break-word; margin-top: 6px; }
+        input[type="range"] { flex: 1; accent-color: #3a5f8c; min-width: 60px; }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 100; justify-content: center; align-items: center; }
+        .modal-overlay.show { display: flex; }
+        .modal-content { background: #1a1c2a; border-radius: 20px; padding: 20px; max-width: 550px; max-height: 75vh; overflow-y: auto; color: #eef; font-size: 12px; line-height: 1.5; border: 1px solid #3a3c58; margin: 20px; }
+        .modal-content h2 { margin-top: 0; color: #ffb347; } .modal-content h3 { color: #7ec8ff; margin-top: 14px; }
+        .modal-close { background: #3a5f8c; margin-top: 10px; width: 100%; }
+        .send-status { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; margin-left: 6px; }
+        .send-status.ok { background: #2a4a2a; color: #8f8; } .send-status.err { background: #4a2a2a; color: #f88; }
+        .obstacle-warning { background: #4a2a1a; color: #ffb347; padding: 8px 12px; border-radius: 12px; font-size: 11px; margin-top: 4px; display: none; }
+        .obstacle-warning button { background: #8c6b3a; font-size: 11px; padding: 4px 10px; margin-left: 8px; }
+        .land-info-panel { background: #0a1a2a; border: 1px solid #3a5f8c; border-radius: 12px; padding: 10px; margin-top: 6px; font-size: 11px; font-family: monospace; max-height: 200px; overflow-y: auto; display: none; }
+        .land-info-panel .land-coord { color: #ffdf8c; cursor: pointer; text-decoration: underline; }
+        .land-info-panel .land-coord:hover { color: #fff; }
+        .drone-list { background: #0a1a2a; border: 1px solid #3a5f8c; border-radius: 12px; padding: 8px; margin-top: 6px; font-size: 11px; font-family: monospace; display: none; }
+        .drone-list input { background: #0a0c16; border: 1px solid #3a3c58; color: #ffdf8c; padding: 4px 8px; border-radius: 12px; font-size: 11px; width: 80px; text-align: center; }
+    </style>
+</head>
+<body>
+<div class="main-container">
+    <div class="tab-nav">
+        <button class="tab-btn active" data-panel="external"> 三维外部</button>
+        <button class="tab-btn" data-panel="internal"> 三维内部</button>
+        <button class="tab-btn" data-panel="manhattan"> 二维曼哈顿</button>
+        <button class="tab-btn" data-panel="video"> 视频流</button>
+    </div>
+    <div class="window-container" id="windowContainer">
+        <div class="window-panel active" id="externalPanel"><button class="window-reset-btn" data-window="external"> 重置视角</button></div>
+        <div class="window-panel" id="internalPanel">
+            <button class="window-reset-btn" data-window="internal"> 重置视角</button>
+            <div class="internal-ui"><div class="internal-crosshair"></div></div>
+            <div class="internal-mode-indicator" id="internalMode"> 观察模式</div>
+            <div class="internal-coords" id="internalCoords">0.0, 0.0, 0.0</div>
+        </div>
+        <div class="window-panel" id="manhattanPanel"><button class="window-reset-btn" data-window="manhattan"> 重置视角</button><canvas id="manhattanCanvas"></canvas></div>
+        <div class="window-panel" id="videoPanel"><button class="window-reset-btn" data-window="video"> 重置视角</button><video id="cameraFeed" autoplay playsinline muted></video></div>
+    </div>
+</div>
+
+<div class="control-panel">
+    <div class="control-row">
+        <label> AB体素</label><input type="number" id="voxelAB" value="22" step="1" min="2" max="50" inputmode="numeric">
+        <label> AD体素</label><input type="number" id="voxelAD" value="22" step="1" min="2" max="50" inputmode="numeric">
+        <label> AE体素</label><input type="number" id="voxelAE" value="22" step="1" min="2" max="50" inputmode="numeric">
+    </div>
+    <div class="control-row">
+        <label> AB距离</label><input type="number" id="meterAB" value="3.0" step="0.01" inputmode="decimal">
+        <label> AD距离</label><input type="text" id="meterAD" value="3.00" readonly style="background:#1a1c2a;color:#888;">
+        <label> AE距离</label><input type="text" id="meterAE" value="3.00" readonly style="background:#1a1c2a;color:#888;">
+        <button id="toggleCornerLabels"> 显示角标</button>
+        <span style="font-size:10px;color:#888;">角标开关</span>
+    </div>
+</div>
+
+<div class="control-panel">
+    <div class="control-row"><label> 指令</label><textarea id="coordInput" placeholder="QD(0,0,0) D2(5,0,0) ZD(10,10,5)&#10;支持粘贴AI生成的坐标流&#10;Fill: /fill x1 y1 z1 x2 y2 z2 minecraft:glass|dirt|ice"></textarea></div>
+    <div class="control-row">
+        <button class="primary" id="parseBtn"> 解析路径</button>
+        <button class="danger" id="clearAnchorBtn"> 清除路径方块</button>
+        <button id="resetPathBtn"> 重置路径红线</button>
+        <button id="globalResetBtn"> 一键重置</button>
+        <button id="landInfoBtn" class="success"> 陆地信息</button>
+    </div>
+    <div class="obstacle-warning" id="obstacleWarning">路径穿过障碍实体！ <button id="autoFixBtn">自动修正</button> <button id="manualFixBtn">手动修改</button></div>
+    <div class="land-info-panel" id="landInfoPanel"></div>
+</div>
+
+<div class="control-panel">
+    <div class="control-row">
+        <button id="generatePkgBtn"> 生成指令包</button>
+        <button id="generateSeqBtn" class="primary"> 生成时序指令</button>
+        <button id="copyPkgBtn"> 复制</button>
+        <span style="font-size:11px;color:#aaa;">发送:</span>
+        <button id="sendBLEBtn" class="success"> 蓝牙</button>
+        <button id="sendWifiBtn" class="success"> WiFi</button>
+        <span id="sendStatus" class="send-status" style="display:none;"></span>
+    </div>
+    <div class="output-area" id="outputArea">等待输入坐标...</div>
+</div>
+
+<div class="control-panel">
+    <div class="control-row">
+        <button id="toggleClosedLoopBtn"> 开环模式</button>
+        <button id="savePathBtn"> 保存路径</button>
+        <select id="savedPathSelect"><option value="">已保存的路径</option></select>
+        <button id="loadPathBtn"> 加载</button>
+        <button id="deletePathBtn" class="danger"> 删除</button>
+    </div>
+    <div class="control-row">
+        <button id="popoutVideoBtn"> 弹出视频</button>
+        <button id="droneListBtn"> 编队</button>
+        <button id="landBtn" class="success"> 降落</button>
+    </div>
+    <div class="drone-list" id="droneListPanel">
+        <div class="control-row"><label>名称</label><input type="text" id="droneName" placeholder="剑灵一号"><label>地址</label><input type="text" id="droneAddr" placeholder="00:00:00:00:00:00"><button id="addDroneBtn">添加</button></div>
+        <div id="droneListItems"></div>
+    </div>
+</div>
+
+<div class="control-panel">
+    <div class="control-row">
+        <label> 面透明度</label><input type="range" id="faceOpacitySlider" min="0" max="100" value="35">
+        <label> 线框透明度</label><input type="range" id="gridOpacitySlider" min="0" max="100" value="50">
+    </div>
+    <div class="control-row">
+        <button id="lockTranslateBtn"> 平移固定</button>
+        <button id="lockRotateBtn"> 旋转固定</button>
+        <button id="lockScaleBtn"> 缩放固定</button>
+        <button id="helpBtn"> 使用说明</button>
+    </div>
+    <div class="status-bar" id="statusBar"> D3-真实承诺 v1.91 就绪 | 四层架构重构+交互统一</div>
+</div>
+
+<div class="modal-overlay" id="helpModal">
+    <div class="modal-content">
+        <h2>D3-真实承诺 · 使用说明</h2>
+        <h3>四层世界架构</h3>
+        <p><b>A - 绝对坐标系</b>：红色中点(0,0,0)，永恒不变的世界原点。</p>
+        <p><b>B - 固定坐标系</b>：出生点蓝色陆地空心立方体，可变可缩放，八个角标可开关。</p>
+        <p><b>C/D/E - 相对坐标系</b>：三维外部/内部/二维曼哈顿，三种观察视角。</p>
+        <p><b>F - 上层叙事</b>：视频流，连接现实世界。</p>
+        <h3>体素铁律</h3>
+        <p>体素永远是正方体。长方体由不同数量的正方体堆成。精度自由定义。</p>
+        <h3>操作</h3>
+        <p><b>按1</b>：放置路径方块 <b>按2</b>：放置障碍方块（连按10次清空）</p>
+        <p><b>按0</b>：删除任意方块 <b>按8</b>：终点模式 <b>按9</b>：切换开环/闭环</p>
+        <p><b>Fill指令</b>：/fill x1 y1 z1 x2 y2 z2 minecraft:glass|dirt|ice</p>
+        <p><b>TP指令</b>：TP(x,y,z) 传送</p>
+        <h3>更新日志</h3>
+        <p><b>V1.0-V1.8</b> - 功能累积阶段（详见历史版本）</p>
+        <p><b>V1.9</b> - 闭环模式、路径保存复用、时序指令生成、视频弹窗、多机编队、降落模式</p>
+        <p><b>V1.91</b> - 四层架构重构（A/B/CDE/F模块独立）、出生点蓝色陆地空心立方体、角标开关、任何方块可手动放置/删除、路径方块沉入实体内部、障碍实体表面可叠障碍实体、拆除模式删任意方块、体素数量变化重置固定坐标系、路径方块基于绝对坐标不随固定坐标系消失</p>
+        <button class="modal-close" id="closeHelpBtn">关闭</button>
+    </div>
+</div>
+
+<script>
+/* =====================================================================
+   D3-真实承诺 v1.91 - 四层架构重构
+   A: 绝对坐标系  B: 固定坐标系  C/D/E: 相对坐标系  F: 上层叙事
+   ===================================================================== */
+
+/* ========== 模块A：绝对坐标系（永恒不变） ========== */
+var AbsCoords = {
+    origin: { x: 0, y: 0, z: 0 },
+    voxelRenderSize: 1.0,
+    snapToCorner: function(x, y, z) { return { x: Math.round(x), y: Math.round(y), z: Math.round(z) }; },
+    getVoxelRenderCenter: function(vc) { return { x: vc.x * this.voxelRenderSize, y: vc.y * this.voxelRenderSize, z: vc.z * this.voxelRenderSize }; },
+    worldToVoxel: function(wx, wy, wz) { return this.snapToCorner(Math.round(wx/this.voxelRenderSize), Math.round(wy/this.voxelRenderSize), Math.round(wz/this.voxelRenderSize)); },
+    isSnapEqual: function(a, b) { return a.x===b.x && a.y===b.y && a.z===b.z; }
+};
+
+/* ========== 模块B：固定坐标系（可变可缩放） ========== */
+var FixedFrame = {
+    voxelAB: 22, voxelAD: 22, voxelAE: 22,
+    meterAB: 3.0, meterAD: 3.0, meterAE: 3.0,
+    showCornerLabels: false,
+    hollowBoxMeshes: [],
+    cornerLabelSprites: [],
+    scene: null,
+    redMidpoint: null,
+    opacityFace: 0.35, opacityGrid: 0.5,
+    gridLines: null,
+    initScene: function(scene) { this.scene = scene; },
+    recalcMeters: function() {
+        if (this.voxelAB <= 0) this.voxelAB = 22;
+        this.meterAD = this.meterAB * (this.voxelAD / this.voxelAB);
+        this.meterAE = this.meterAB * (this.voxelAE / this.voxelAB);
+    },
+    getCenterVoxel: function() {
+        return { x: Math.floor(this.voxelAB/2), y: Math.floor(this.voxelAE/2), z: Math.floor(this.voxelAD/2) };
+    },
+    getVoxelMinMax: function() {
+        return {
+            xMin: -Math.floor(this.voxelAB/2), xMax: Math.floor(this.voxelAB/2),
+            yMin: -Math.floor(this.voxelAE/2), yMax: Math.floor(this.voxelAE/2),
+            zMin: -Math.floor(this.voxelAD/2), zMax: Math.floor(this.voxelAD/2)
+        };
+    },
+    rebuildHollowBox: function() {
+        if (!this.scene) return;
+        // 清除旧几何体
+        for (var i=0; i<this.hollowBoxMeshes.length; i++) this.scene.remove(this.hollowBoxMeshes[i]);
+        this.hollowBoxMeshes = [];
+        for (var j=0; j<this.cornerLabelSprites.length; j++) this.scene.remove(this.cornerLabelSprites[j]);
+        this.cornerLabelSprites = [];
+        if (this.gridLines) { this.scene.remove(this.gridLines); this.gridLines = null; }
+        if (this.redMidpoint) { this.scene.remove(this.redMidpoint); this.redMidpoint = null; }
+
+        var mm = this.getVoxelMinMax();
+        var vs = AbsCoords.voxelRenderSize;
+        // 构建空心立方体：只渲染外表面体素
+        for (var vx=mm.xMin; vx<=mm.xMax; vx++) {
+            for (var vy=mm.yMin; vy<=mm.yMax; vy++) {
+                for (var vz=mm.zMin; vz<=mm.zMax; vz++) {
+                    // 只渲染表面（至少一个坐标在边界上）
+                    var onSurface = (vx===mm.xMin||vx===mm.xMax||vy===mm.yMin||vy===mm.yMax||vz===mm.zMin||vz===mm.zMax);
+                    if (!onSurface) continue;
+                    var rc = AbsCoords.getVoxelRenderCenter({x:vx,y:vy,z:vz});
+                    var geo = new THREE.BoxGeometry(vs*0.95, vs*0.95, vs*0.95);
+                    var mat = new THREE.MeshBasicMaterial({ color: 0x4488cc, transparent: true, opacity: 0.5 });
+                    var mesh = new THREE.Mesh(geo, mat);
+                    mesh.position.set(rc.x, rc.y, rc.z);
+                    mesh.userData = { type: 'frameBlock', vx: vx, vy: vy, vz: vz };
+                    var edges = new THREE.EdgesGeometry(geo);
+                    mesh.add(new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000 })));
+                    this.scene.add(mesh);
+                    this.hollowBoxMeshes.push(mesh);
+                }
+            }
+        }
+        // 红色中点
+        var midGeo = new THREE.BoxGeometry(vs, vs, vs);
+        this.redMidpoint = new THREE.Mesh(midGeo, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+        var midRc = AbsCoords.getVoxelRenderCenter({x:0,y:0,z:0});
+        this.redMidpoint.position.set(midRc.x, midRc.y, midRc.z);
+        this.scene.add(this.redMidpoint);
+        // 网格线框（轻量，用于外部窗口参照）
+        this.gridLines = new THREE.Group();
+        var bw=this.voxelAB*vs, bh=this.voxelAE*vs, bd=this.voxelAD*vs;
+        for (var ix=mm.xMin; ix<=mm.xMax+1; ix++) {
+            var x=ix*vs;
+            var geo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x,mm.yMin*vs,mm.zMin*vs),new THREE.Vector3(x,mm.yMax*vs+vs,mm.zMin*vs),new THREE.Vector3(x,mm.yMax*vs+vs,mm.zMax*vs+vs),new THREE.Vector3(x,mm.yMin*vs,mm.zMax*vs+vs),new THREE.Vector3(x,mm.yMin*vs,mm.zMin*vs)]);
+            this.gridLines.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: this.opacityGrid })));
+        }
+        for (var iz=mm.zMin; iz<=mm.zMax+1; iz++) {
+            var z=iz*vs;
+            var geo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(mm.xMin*vs,mm.yMin*vs,z),new THREE.Vector3(mm.xMax*vs+vs,mm.yMin*vs,z),new THREE.Vector3(mm.xMax*vs+vs,mm.yMax*vs+vs,z),new THREE.Vector3(mm.xMin*vs,mm.yMax*vs+vs,z),new THREE.Vector3(mm.xMin*vs,mm.yMin*vs,z)]);
+            this.gridLines.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: this.opacityGrid })));
+        }
+        for (var iy=mm.yMin; iy<=mm.yMax+1; iy++) {
+            var y=iy*vs;
+            var geo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(mm.xMin*vs,y,mm.zMin*vs),new THREE.Vector3(mm.xMax*vs+vs,y,mm.zMin*vs),new THREE.Vector3(mm.xMax*vs+vs,y,mm.zMax*vs+vs),new THREE.Vector3(mm.xMin*vs,y,mm.zMax*vs+vs),new THREE.Vector3(mm.xMin*vs,y,mm.zMin*vs)]);
+            this.gridLines.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: this.opacityGrid })));
+        }
+        this.scene.add(this.gridLines);
+        this.updateCornerLabels();
+    },
+    updateCornerLabels: function() {
+        for (var j=0; j<this.cornerLabelSprites.length; j++) this.scene.remove(this.cornerLabelSprites[j]);
+        this.cornerLabelSprites = [];
+        if (!this.showCornerLabels) return;
+        var mm = this.getVoxelMinMax();
+        var corners = [
+            { label: '东北上', x: mm.xMin, y: mm.yMax, z: mm.zMax },
+            { label: '东南上', x: mm.xMax, y: mm.yMax, z: mm.zMax },
+            { label: '西北上', x: mm.xMin, y: mm.yMax, z: mm.zMin },
+            { label: '西南上', x: mm.xMax, y: mm.yMax, z: mm.zMin },
+            { label: '东北下', x: mm.xMin, y: mm.yMin, z: mm.zMax },
+            { label: '东南下', x: mm.xMax, y: mm.yMin, z: mm.zMax },
+            { label: '西北下', x: mm.xMin, y: mm.yMin, z: mm.zMin },
+            { label: '西南下', x: mm.xMax, y: mm.yMin, z: mm.zMin }
+        ];
+        for (var i=0; i<corners.length; i++) {
+            var c = corners[i];
+            var rc = AbsCoords.getVoxelRenderCenter({x:c.x, y:c.y, z:c.z});
+            var canvas = document.createElement('canvas'); canvas.width=128; canvas.height=32;
+            var ctx = canvas.getContext('2d'); ctx.fillStyle='#ffdf8c'; ctx.font='bold 10px monospace';
+            ctx.fillText(c.label+'('+c.x+','+c.y+','+c.z+')', 0, 16);
+            var texture = new THREE.CanvasTexture(canvas);
+            var sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true }));
+            sprite.position.set(rc.x, rc.y, rc.z); sprite.scale.set(2, 0.5, 1);
+            sprite.userData = { cornerX: c.x, cornerY: c.y, cornerZ: c.z };
+            this.scene.add(sprite);
+            this.cornerLabelSprites.push(sprite);
+        }
+    }
+};
+
+/* ========== 模块C/D/E：相对坐标系（三个窗口共享场景数据） ========== */
+var RelCoords = {
+    scene: null,
+    externalRenderer: null, internalRenderer: null,
+    externalCamera: null, internalCamera: null,
+    externalControls: null,
+    internalReady: false,
+    internalMode: 'observe',
+    internalMoveFwd: false, internalMoveBack: false, internalMoveLeft: false, internalMoveRight: false,
+    internalMoveUp: false, internalMoveDown: false,
+    internalMouseDown: false, internalLastMX: 0, internalLastMY: 0,
+    internalPitch: 0, internalYaw: 0,
+    externalAnimId: null, internalAnimId: null, manhattanAnimId: null,
+    lockTranslate: false, lockRotate: false, lockScale: false,
+
+    initScene: function(scene) { this.scene = scene; },
+    getCameraAbsCoords: function() {
+        if (!this.internalCamera) return {x:0,y:0,z:0};
+        return { x: this.internalCamera.position.x, y: this.internalCamera.position.y, z: this.internalCamera.position.z };
+    },
+    updateInternalMovement: function() {
+        if (!this.internalCamera) return;
+        var delta = 0.15 * AbsCoords.voxelRenderSize;
+        var fwd = new THREE.Vector3(0,0,-1).applyQuaternion(this.internalCamera.quaternion); fwd.y=0; fwd.normalize();
+        var right = new THREE.Vector3(1,0,0).applyQuaternion(this.internalCamera.quaternion); right.y=0; right.normalize();
+        if (this.internalMoveFwd) this.internalCamera.position.addScaledVector(fwd, delta);
+        if (this.internalMoveBack) this.internalCamera.position.addScaledVector(fwd, -delta);
+        if (this.internalMoveRight) this.internalCamera.position.addScaledVector(right, delta);
+        if (this.internalMoveLeft) this.internalCamera.position.addScaledVector(right, -delta);
+        if (this.internalMoveUp) this.internalCamera.position.y += delta;
+        if (this.internalMoveDown) this.internalCamera.position.y -= delta;
+        var el = document.getElementById('internalCoords');
+        if (el) { var ac = this.getCameraAbsCoords(); el.textContent = ac.x.toFixed(1)+', '+ac.y.toFixed(1)+', '+ac.z.toFixed(1); }
+    },
+    setupInternalControls: function() {
+        var self = this;
+        var intPanel = document.getElementById('internalPanel'); if (!intPanel) return;
+        window.addEventListener('keydown', function(e) {
+            if (!document.getElementById('internalPanel').classList.contains('active')) return;
+            switch(e.key.toLowerCase()) {
+                case 'w': self.internalMoveFwd=true; e.preventDefault(); break;
+                case 's': self.internalMoveBack=true; e.preventDefault(); break;
+                case 'a': self.internalMoveLeft=true; e.preventDefault(); break;
+                case 'd': self.internalMoveRight=true; e.preventDefault(); break;
+                case 'q': self.internalMoveDown=true; e.preventDefault(); break;
+                case 'e': self.internalMoveUp=true; e.preventDefault(); break;
+            }
+        });
+        window.addEventListener('keyup', function(e) {
+            switch(e.key.toLowerCase()) {
+                case 'w': self.internalMoveFwd=false; e.preventDefault(); break;
+                case 's': self.internalMoveBack=false; e.preventDefault(); break;
+                case 'a': self.internalMoveLeft=false; e.preventDefault(); break;
+                case 'd': self.internalMoveRight=false; e.preventDefault(); break;
+                case 'q': self.internalMoveDown=false; e.preventDefault(); break;
+                case 'e': self.internalMoveUp=false; e.preventDefault(); break;
+            }
+        });
+        intPanel.addEventListener('pointerdown', function(e) { self.internalMouseDown=true; self.internalLastMX=e.clientX; self.internalLastMY=e.clientY; intPanel.setPointerCapture(e.pointerId); e.preventDefault(); });
+        window.addEventListener('pointermove', function(e) {
+            if (!self.internalMouseDown) return;
+            if (!document.getElementById('internalPanel').classList.contains('active')) return;
+            var dx=e.clientX-self.internalLastMX, dy=e.clientY-self.internalLastMY;
+            self.internalLastMX=e.clientX; self.internalLastMY=e.clientY;
+            self.internalYaw -= dx*0.002; self.internalPitch -= dy*0.002;
+            self.internalPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, self.internalPitch));
+            var q = new THREE.Quaternion();
+            q.setFromEuler(new THREE.Euler(self.internalPitch, self.internalYaw, 0, 'YXZ'));
+            self.internalCamera.quaternion.copy(q);
+        });
+        window.addEventListener('pointerup', function() { self.internalMouseDown=false; });
+    }
+};
+
+/* ========== 全局路径与方块管理 ========== */
+var PathManager = {
+    pathPoints: [],
+    anchorMeshes: [],
+    obstacleMeshes: [],
+    landBlocks: [],
+    landLabels: [],
+    landCounter: 0,
+    pathLine: null,
+    arrowMesh: null,
+    closedLoopMode: false,
+    endpointClickCount: {},
+    key2PressCount: 0,
+    key2PressTimer: null,
+    savedPaths: [],
+    droneList: [],
+
+    init: function() { this.loadPathsFromStorage(); this.loadDronesFromStorage(); },
+    loadPathsFromStorage: function() { try { var d=JSON.parse(localStorage.getItem('d3_saved_paths')||'[]'); if(Array.isArray(d)) this.savedPaths=d; else this.savedPaths=[]; } catch(e) { this.savedPaths=[]; } },
+    savePathsToStorage: function() { localStorage.setItem('d3_saved_paths', JSON.stringify(this.savedPaths)); },
+    loadDronesFromStorage: function() { try { var d=JSON.parse(localStorage.getItem('d3_drone_list')||'[]'); if(Array.isArray(d)) this.droneList=d; else this.droneList=[]; } catch(e) { this.droneList=[]; } },
+    saveDronesToStorage: function() { localStorage.setItem('d3_drone_list', JSON.stringify(this.droneList)); },
+    isInsideObstacle: function(vx, vy, vz) {
+        for (var i=0; i<this.obstacleMeshes.length; i++) {
+            var m=this.obstacleMeshes[i];
+            if (m.userData && m.userData.vx1!==undefined) {
+                if (vx>=m.userData.vx1 && vx<=m.userData.vx2 && vy>=m.userData.vy1 && vy<=m.userData.vy2 && vz>=m.userData.vz1 && vz<=m.userData.vz2) return true;
+            }
+        }
+        return false;
+    },
+    findNearestValidVoxel: function(vx, vy, vz) {
+        var dirs=[{x:1,y:0,z:0},{x:-1,y:0,z:0},{x:0,y:0,z:1},{x:0,y:0,z:-1},{x:0,y:1,z:0},{x:0,y:-1,z:0}];
+        for (var r=1; r<=10; r++) {
+            for (var d=0; d<dirs.length; d++) {
+                var nx=vx+dirs[d].x*r, ny=vy+dirs[d].y*r, nz=vz+dirs[d].z*r;
+                if (!this.isInsideObstacle(nx, ny, nz)) return {x:nx, y:ny, z:nz};
+            }
+        }
+        return {x:vx, y:vy, z:vz};
+    },
+    syncPathToText: function() {
+        var lines=[];
+        for (var i=0; i<this.pathPoints.length; i++) {
+            var p=this.pathPoints[i];
+            lines.push(p.type+'('+p.x+','+p.y+','+p.z+')');
+        }
+        var el=document.getElementById('coordInput');
+        if(el) el.value=lines.join('\n');
+    },
+    rebuildAllAnchorsFromPath: function(scene) {
+        if (!scene) return;
+        for (var i=0; i<this.anchorMeshes.length; i++) scene.remove(this.anchorMeshes[i]);
+        this.anchorMeshes=[];
+        for (var j=0; j<this.pathPoints.length; j++) {
+            var p=this.pathPoints[j];
+            var rc=AbsCoords.getVoxelRenderCenter(p);
+            var geo=new THREE.BoxGeometry(AbsCoords.voxelRenderSize*0.95, AbsCoords.voxelRenderSize*0.95, AbsCoords.voxelRenderSize*0.95);
+            var color=p.type==='QD'?0x00ff00:p.type==='ZD'?0x0088ff:0xffffff;
+            var mesh=new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: color }));
+            mesh.position.set(rc.x, rc.y, rc.z);
+            mesh.userData={ type: p.type, vx: p.x, vy: p.y, vz: p.z };
+            scene.add(mesh); this.anchorMeshes.push(mesh);
+        }
+    },
+    updatePathLineInScene: function(scene) {
+        if (!scene) return;
+        if (this.pathLine) { scene.remove(this.pathLine); this.pathLine=null; }
+        if (this.arrowMesh) { scene.remove(this.arrowMesh); this.arrowMesh=null; }
+        if (this.pathPoints.length<2) return;
+        var pts=[];
+        for (var i=0; i<this.pathPoints.length; i++) {
+            var rc=AbsCoords.getVoxelRenderCenter(this.pathPoints[i]);
+            pts.push(new THREE.Vector3(rc.x, rc.y, rc.z));
+        }
+        if (this.closedLoopMode && this.pathPoints.length>=2) {
+            var firstRc=AbsCoords.getVoxelRenderCenter(this.pathPoints[0]);
+            pts.push(new THREE.Vector3(firstRc.x, firstRc.y, firstRc.z));
+        }
+        var geo=new THREE.BufferGeometry().setFromPoints(pts);
+        this.pathLine=new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xff3333, linewidth: 2 }));
+        scene.add(this.pathLine);
+        var last=pts[pts.length-1], prev=pts[pts.length-2]||pts[0];
+        var dir=new THREE.Vector3().subVectors(last, prev).normalize();
+        if (dir.length()<0.001) dir.set(0,0,1);
+        var arrowMesh=new THREE.Mesh(new THREE.ConeGeometry(0.2,0.5,8,8), new THREE.MeshBasicMaterial({ color: 0xff3333 }));
+        arrowMesh.position.copy(last);
+        arrowMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
+        this.arrowMesh=arrowMesh; scene.add(arrowMesh);
+    },
+    refreshSceneVisuals: function(scene) {
+        this.rebuildAllAnchorsFromPath(scene);
+        this.updatePathLineInScene(scene);
+    },
+    collapseAfterIndex: function(idx) {
+        if (idx<0) idx=-1;
+        if (idx>=this.pathPoints.length) return;
+        this.pathPoints=this.pathPoints.slice(0, idx+1);
+        this.syncPathToText();
+        this.refreshSceneVisuals(RelCoords.scene);
+    },
+    addManualPoint: function(vc) {
+        for (var i=0; i<this.pathPoints.length; i++) {
+            if (AbsCoords.isSnapEqual(this.pathPoints[i], vc)) { if(statusBar) statusBar.innerHTML='该位置已存在路径点'; return; }
+        }
+        var type=this.pathPoints.length===0?'QD':'D'+(this.pathPoints.filter(function(p){return p.type.indexOf('D')===0;}).length+2);
+        this.pathPoints.push({ type:type, x:vc.x, y:vc.y, z:vc.z });
+        this.syncPathToText();
+        this.refreshSceneVisuals(RelCoords.scene);
+        if (statusBar) statusBar.innerHTML='放置 '+type+' @ ('+vc.x+','+vc.y+','+vc.z+')';
+    },
+    removePointByVoxel: function(vc) {
+        var idx=-1;
+        for (var i=0; i<this.pathPoints.length; i++) { if (AbsCoords.isSnapEqual(this.pathPoints[i], vc)) { idx=i; break; } }
+        if (idx<0) { if(statusBar) statusBar.innerHTML='未找到对应路径点'; return; }
+        this.collapseAfterIndex(idx-1);
+        if (statusBar) statusBar.innerHTML='拆除并崩塌后续路径';
+    },
+    markAsEndpoint: function(vc) {
+        var idx=-1;
+        for (var i=0; i<this.pathPoints.length; i++) { if (AbsCoords.isSnapEqual(this.pathPoints[i], vc)) { idx=i; break; } }
+        if (idx<0) { if(statusBar) statusBar.innerHTML='请先放置该方块'; return; }
+        this.pathPoints[idx].type='ZD';
+        if (!this.closedLoopMode) { this.collapseAfterIndex(idx); }
+        else { this.syncPathToText(); this.refreshSceneVisuals(RelCoords.scene); }
+        if (statusBar) statusBar.innerHTML='终点已标记 @ ('+vc.x+','+vc.y+','+vc.z+')'+(this.closedLoopMode?' [闭环]':'');
+    },
+    // 通用放置方块（V1.91新）
+    placeBlock: function(vc, blockType, scene) {
+        if (!scene) return;
+        var rc = AbsCoords.getVoxelRenderCenter(vc);
+        var geo = new THREE.BoxGeometry(AbsCoords.voxelRenderSize*0.95, AbsCoords.voxelRenderSize*0.95, AbsCoords.voxelRenderSize*0.95);
+        var color, userDataType;
+        if (blockType === 'path') {
+            this.addManualPoint(vc);
+            return;
+        } else if (blockType === 'obstacle') {
+            color = 0xdddd00; userDataType = 'obstacle';
+        } else if (blockType === 'land') {
+            color = 0x4488cc; userDataType = 'land';
+        }
+        var mat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: blockType==='obstacle'?0.7:0.5 });
+        var mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(rc.x, rc.y, rc.z);
+        mesh.userData = { type: userDataType, vx: vc.x, vy: vc.y, vz: vc.z };
+        if (blockType === 'land') {
+            var edges = new THREE.EdgesGeometry(geo);
+            mesh.add(new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000 })));
+        }
+        if (blockType === 'obstacle') {
+            mesh.userData.vx1=vc.x; mesh.userData.vx2=vc.x; mesh.userData.vy1=vc.y; mesh.userData.vy2=vc.y; mesh.userData.vz1=vc.z; mesh.userData.vz2=vc.z;
+            this.obstacleMeshes.push(mesh);
+        }
+        if (blockType === 'land') {
+            if (!this.landBlocks[this.landCounter]) this.landBlocks[this.landCounter]=[];
+            this.landBlocks[this.landCounter].push(mesh);
+        }
+        scene.add(mesh);
+        if (statusBar) statusBar.innerHTML = '放置'+ (blockType==='obstacle'?'障碍':blockType==='land'?'蓝色陆地':'路径') +'方块 @ ('+vc.x+','+vc.y+','+vc.z+')';
+    },
+    // 通用删除方块（V1.91新）：删除该坐标上的所有方块
+    removeBlock: function(vc, scene) {
+        if (!scene) return;
+        var found = false;
+        // 删除白色路径方块
+        for (var i=this.anchorMeshes.length-1; i>=0; i--) {
+            var m = this.anchorMeshes[i];
+            if (m.userData && AbsCoords.isSnapEqual({x:m.userData.vx,y:m.userData.vy,z:m.userData.vz}, vc)) {
+                scene.remove(m); this.anchorMeshes.splice(i, 1);
+                // 同步删除pathPoints
+                var idx=-1;
+                for (var j=0; j<this.pathPoints.length; j++) { if (AbsCoords.isSnapEqual(this.pathPoints[j], vc)) { idx=j; break; } }
+                if (idx>=0) this.collapseAfterIndex(idx-1);
+                found = true;
+            }
+        }
+        // 删除黄色障碍方块
+        for (var k=this.obstacleMeshes.length-1; k>=0; k--) {
+            var m = this.obstacleMeshes[k];
+            if (m.userData && AbsCoords.isSnapEqual({x:m.userData.vx1,y:m.userData.vy1,z:m.userData.vz1}, vc)) {
+                scene.remove(m); this.obstacleMeshes.splice(k, 1); found = true;
+            }
+        }
+        // 删除蓝色陆地方块
+        for (var li=0; li<this.landBlocks.length; li++) {
+            for (var lj=this.landBlocks[li].length-1; lj>=0; lj--) {
+                var m = this.landBlocks[li][lj];
+                if (m.userData && AbsCoords.isSnapEqual({x:m.userData.vx,y:m.userData.vy,z:m.userData.vz}, vc)) {
+                    scene.remove(m); this.landBlocks[li].splice(lj, 1); found = true;
+                }
+            }
+        }
+        // 删除固定坐标系蓝色方块
+        for (var fi=FixedFrame.hollowBoxMeshes.length-1; fi>=0; fi--) {
+            var m = FixedFrame.hollowBoxMeshes[fi];
+            if (m.userData && AbsCoords.isSnapEqual({x:m.userData.vx,y:m.userData.vy,z:m.userData.vz}, vc)) {
+                scene.remove(m); FixedFrame.hollowBoxMeshes.splice(fi, 1); found = true;
+            }
+        }
+        if (found) { if (statusBar) statusBar.innerHTML = '已删除方块 @ ('+vc.x+','+vc.y+','+vc.z+')'; }
+        else { if (statusBar) statusBar.innerHTML = '该位置无方块'; }
+    },
+    clearAllObstacles: function(scene) {
+        if (!scene) return;
+        for (var i=0; i<this.obstacleMeshes.length; i++) scene.remove(this.obstacleMeshes[i]);
+        this.obstacleMeshes=[]; this.key2PressCount=0;
+        if (statusBar) statusBar.innerHTML='所有障碍方块已清除';
+    },
+    // Fill指令统一处理
+    executeFill: function(x1,y1,z1,x2,y2,z2,blockType,scene) {
+        var minX=Math.min(x1,x2), maxX=Math.max(x1,x2), minY=Math.min(y1,y2), maxY=Math.max(y1,y2), minZ=Math.min(z1,z2), maxZ=Math.max(z1,z2);
+        var count=0;
+        if (blockType==='glass') {
+            for (var vx=minX; vx<=maxX; vx++) { for (var vy=minY; vy<=maxY; vy++) { for (var vz=minZ; vz<=maxZ; vz++) { this.addManualPoint({x:vx,y:vy,z:vz}); count++; } } }
+            if (statusBar) statusBar.innerHTML='Fill: 生成'+count+'个玻璃路径方块';
+        } else if (blockType==='dirt') {
+            for (var vx=minX; vx<=maxX; vx++) { for (var vy=minY; vy<=maxY; vy++) { for (var vz=minZ; vz<=maxZ; vz++) { this.placeBlock({x:vx,y:vy,z:vz}, 'obstacle', scene); count++; } } }
+            if (statusBar) statusBar.innerHTML='Fill: 生成'+count+'个泥土障碍方块';
+        } else if (blockType==='ice') {
+            this.landCounter++;
+            for (var vx=minX; vx<=maxX; vx++) { for (var vy=minY; vy<=maxY; vy++) { for (var vz=minZ; vz<=maxZ; vz++) { this.placeBlock({x:vx,y:vy,z:vz}, 'land', scene); count++; } } }
+            if (statusBar) statusBar.innerHTML='Fill: 生成陆地'+(this.landBlocks.length)+'，'+count+'个蓝色参照方块';
+        }
+    },
+    generatePackage: function(points) {
+        if (points.length<2) return null;
+        var out='路径类型：'+(points.length===2?'直线':'自由')+'路径'+(this.closedLoopMode?'（闭环）':'（开环）')+'\n总段数：'+(points.length-1)+'\n\n路径坐标清单（体素）：\n';
+        for (var i=0; i<points.length; i++) out+=points[i].type+'('+points[i].x+','+points[i].y+','+points[i].z+') → ';
+        out=out.slice(0,-3)+'\n\n物理距离清单：\n';
+        var mpv=FixedFrame.meterAB/FixedFrame.voxelAB;
+        for (var j=0; j<points.length-1; j++) { var a=points[j],b=points[j+1]; out+='段'+(j+1)+': legX='+(Math.abs(b.x-a.x)*mpv).toFixed(2)+'m, legZ='+(Math.abs(b.z-a.z)*mpv).toFixed(2)+'m, legY='+(Math.abs(b.y-a.y)*mpv).toFixed(2)+'m\n'; }
+        return out;
+    },
+    generateSequence: function(points) {
+        if (points.length<2) return null;
+        var out='时序指令清单：\n'; var mpv=FixedFrame.meterAB/FixedFrame.voxelAB; var currentDir='';
+        for (var j=0; j<points.length-1; j++) {
+            var a=points[j],b=points[j+1]; var dx=b.x-a.x,dz=b.z-a.z,dy=b.y-a.y;
+            var distX=Math.abs(dx)*mpv,distZ=Math.abs(dz)*mpv,distY=Math.abs(dy)*mpv;
+            var dir=''; if(dx>0)dir='东';else if(dx<0)dir='西'; if(dz>0)dir+='南';else if(dz<0)dir+='北'; if(dir==='')dir='原地';
+            var turn=''; if(currentDir!==''&&currentDir!==dir) { turn='右转 90° | '; }
+            currentDir=dir; var totalDist=Math.sqrt(distX*distX+distZ*distZ+distY*distY);
+            out+=(j+1)+'. '+turn+'前进 '+totalDist.toFixed(2)+'m（向'+dir+'）\n';
+        }
+        out+=points.length+'. 停止'; return out;
+    }
+};
+PathManager.init();
+
+/* ========== DOM引用 ========== */
+var coordInput = document.getElementById('coordInput');
+var outputArea = document.getElementById('outputArea');
+var statusBar = document.getElementById('statusBar');
+var obstacleWarning = document.getElementById('obstacleWarning');
+var landInfoPanel = document.getElementById('landInfoPanel');
+
+/* ========== 路径解析 ========== */
+function parseCoordText(text) {
+    var tpMatch = text.match(/TP\((-?[\d.]+),(-?[\d.]+),(-?[\d.]+)\)/);
+    if (tpMatch) {
+        var tx=parseFloat(tpMatch[1]), ty=parseFloat(tpMatch[2]), tz=parseFloat(tpMatch[3]);
+        if(RelCoords.internalCamera){RelCoords.internalCamera.position.set(tx,ty,tz);RelCoords.internalCamera.lookAt(0,0,0);statusBar.innerHTML='已传送到('+tx.toFixed(1)+','+ty.toFixed(1)+','+tz.toFixed(1)+')';}
+        return [];
+    }
+    var fillMatch = text.match(/\/fill\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+minecraft:(glass|dirt|ice)/i);
+    if (fillMatch) {
+        PathManager.executeFill(parseInt(fillMatch[1]),parseInt(fillMatch[2]),parseInt(fillMatch[3]),parseInt(fillMatch[4]),parseInt(fillMatch[5]),parseInt(fillMatch[6]),fillMatch[7].toLowerCase(),RelCoords.scene);
+        return [];
+    }
+    var points=[]; var regex=/(QD|D\d+|ZD)\((-?[\d.]+),(-?[\d.]+),(-?[\d.]+)\)/g; var match;
+    while((match=regex.exec(text))!==null){points.push({type:match[1],x:parseInt(match[2]),y:parseInt(match[3]),z:parseInt(match[4])});}
+    if(points.length===0)return[];
+    var qd=[],zd=[],dn=[];
+    for(var i=0;i<points.length;i++){if(points[i].type==='QD')qd.push(points[i]);else if(points[i].type==='ZD')zd.push(points[i]);else if(points[i].type.indexOf('D')===0)dn.push(points[i]);}
+    dn.sort(function(a,b){return parseInt(a.type.substring(1))-parseInt(b.type.substring(1));});
+    return qd.concat(dn).concat(zd);
+}
+
+function checkPathObstacles(){for(var i=0;i<PathManager.pathPoints.length;i++){if(PathManager.isInsideObstacle(PathManager.pathPoints[i].x,PathManager.pathPoints[i].y,PathManager.pathPoints[i].z))return true;}return false;}
+function autoFixPath(){for(var i=0;i<PathManager.pathPoints.length;i++){var p=PathManager.pathPoints[i];if(PathManager.isInsideObstacle(p.x,p.y,p.z)){var f=PathManager.findNearestValidVoxel(p.x,p.y,p.z);p.x=f.x;p.y=f.y;p.z=f.z;}}PathManager.syncPathToText();PathManager.refreshSceneVisuals(RelCoords.scene);obstacleWarning.style.display='none';statusBar.innerHTML='路径已自动修正';}
+
+/* ========== 按钮事件 ========== */
+function bindEvents(){
+    document.getElementById('parseBtn').addEventListener('click',function(){
+        var text=coordInput.value.trim();if(!text){statusBar.innerHTML='请输入坐标指令';return;}
+        var points=parseCoordText(text);if(points.length===0)return;
+        var hasQD=false,hasZD=false;for(var i=0;i<points.length;i++){if(points[i].type==='QD')hasQD=true;if(points[i].type==='ZD')hasZD=true;}
+        if(!hasQD||!hasZD){statusBar.innerHTML='缺少起点(QD)或终点(ZD)';return;}
+        PathManager.pathPoints=points;PathManager.refreshSceneVisuals(RelCoords.scene);
+        statusBar.innerHTML='路径已更新 | '+points.length+'个点'+(PathManager.closedLoopMode?' [闭环]':'');
+        outputArea.textContent='路径已更新，点击"生成指令包"或"生成时序指令"查看详情。';
+        if(checkPathObstacles())obstacleWarning.style.display='block';
+    });
+    document.getElementById('generatePkgBtn').addEventListener('click',function(){if(PathManager.pathPoints.length<2){outputArea.textContent='路径点不足';return;}var pkg=PathManager.generatePackage(PathManager.pathPoints);if(pkg){outputArea.textContent=pkg;statusBar.innerHTML='指令包已生成';}});
+    document.getElementById('generateSeqBtn').addEventListener('click',function(){if(PathManager.pathPoints.length<2){outputArea.textContent='路径点不足';return;}var seq=PathManager.generateSequence(PathManager.pathPoints);if(seq){outputArea.textContent=seq;statusBar.innerHTML='时序指令已生成';}});
+    document.getElementById('copyPkgBtn').addEventListener('click',function(){var t=outputArea.textContent;if(t&&t!=='等待输入坐标...'&&t.indexOf('❌')===-1&&t.indexOf('路径已更新')===-1){navigator.clipboard.writeText(t).then(function(){statusBar.innerHTML='已复制';}).catch(function(){statusBar.innerHTML='复制失败';});}else{statusBar.innerHTML='请先生成指令包';}});
+    document.getElementById('clearAnchorBtn').addEventListener('click',function(){if(RelCoords.scene){for(var i=0;i<PathManager.anchorMeshes.length;i++)RelCoords.scene.remove(PathManager.anchorMeshes[i]);PathManager.anchorMeshes=[];}PathManager.pathPoints=[];PathManager.syncPathToText();statusBar.innerHTML='路径方块已清除';});
+    document.getElementById('resetPathBtn').addEventListener('click',function(){PathManager.pathPoints=[];PathManager.refreshSceneVisuals(RelCoords.scene);coordInput.value='';outputArea.textContent='等待输入坐标...';statusBar.innerHTML='路径红线已重置';obstacleWarning.style.display='none';});
+    document.getElementById('globalResetBtn').addEventListener('click',function(){
+        document.getElementById('resetPathBtn').click();
+        PathManager.clearAllObstacles(RelCoords.scene);
+        document.getElementById('voxelAB').value='22';document.getElementById('voxelAD').value='22';document.getElementById('voxelAE').value='22';
+        document.getElementById('meterAB').value='3.0';
+        FixedFrame.voxelAB=22;FixedFrame.voxelAD=22;FixedFrame.voxelAE=22;FixedFrame.meterAB=3.0;
+        FixedFrame.recalcMeters();syncMeterDisplay();
+        FixedFrame.rebuildHollowBox();
+        if(RelCoords.externalCamera){RelCoords.externalCamera.position.set(8,5,8);RelCoords.externalCamera.lookAt(0,0,0);RelCoords.externalControls.target.set(0,0,0);RelCoords.externalControls.update();}
+        if(RelCoords.internalCamera){RelCoords.internalCamera.position.set(0,0,5);RelCoords.internalCamera.lookAt(0,0,0);RelCoords.internalPitch=0;RelCoords.internalYaw=0;}
+        statusBar.innerHTML='全部已重置';
+    });
+    document.getElementById('autoFixBtn').addEventListener('click',function(){autoFixPath();});
+    document.getElementById('manualFixBtn').addEventListener('click',function(){obstacleWarning.style.display='none';statusBar.innerHTML='请手动修改路径坐标';});
+    document.getElementById('toggleClosedLoopBtn').addEventListener('click',function(){PathManager.closedLoopMode=!PathManager.closedLoopMode;this.textContent=PathManager.closedLoopMode?'闭环模式':'开环模式';this.classList.toggle('lock-active',PathManager.closedLoopMode);statusBar.innerHTML='已切换为'+(PathManager.closedLoopMode?'闭环':'开环')+'模式';PathManager.refreshSceneVisuals(RelCoords.scene);});
+    document.getElementById('savePathBtn').addEventListener('click',function(){if(PathManager.pathPoints.length<2){statusBar.innerHTML='路径点不足';return;}var name=prompt('请输入路径名称：','路径'+(PathManager.savedPaths.length+1));if(!name)return;PathManager.savedPaths.push({name:name,points:PathManager.pathPoints,closedLoop:PathManager.closedLoopMode});PathManager.savePathsToStorage();refreshSavedPathSelect();statusBar.innerHTML='路径已保存：'+name;});
+    document.getElementById('loadPathBtn').addEventListener('click',function(){var idx=parseInt(document.getElementById('savedPathSelect').value);if(isNaN(idx))return;var data=PathManager.savedPaths[idx];if(!data)return;PathManager.pathPoints=data.points;PathManager.closedLoopMode=data.closedLoop||false;document.getElementById('toggleClosedLoopBtn').textContent=PathManager.closedLoopMode?'闭环模式':'开环模式';document.getElementById('toggleClosedLoopBtn').classList.toggle('lock-active',PathManager.closedLoopMode);PathManager.syncPathToText();PathManager.refreshSceneVisuals(RelCoords.scene);statusBar.innerHTML='已加载路径：'+data.name;});
+    document.getElementById('deletePathBtn').addEventListener('click',function(){var idx=parseInt(document.getElementById('savedPathSelect').value);if(isNaN(idx))return;var name=PathManager.savedPaths[idx].name;PathManager.savedPaths.splice(idx,1);PathManager.savePathsToStorage();refreshSavedPathSelect();statusBar.innerHTML='已删除路径：'+name;});
+    document.getElementById('popoutVideoBtn').addEventListener('click',function(){var w=window.open('','FPV','width=640,height=480');w.document.write('<video autoplay muted loop style="width:100%;height:100%;object-fit:cover;"></video><script>var v=document.querySelector("video");var s=document.getElementById("cameraFeed")?.srcObject;if(s)v.srcObject=s;<\/script>');});
+    document.getElementById('droneListBtn').addEventListener('click',function(){var p=document.getElementById('droneListPanel');p.style.display=p.style.display==='block'?'none':'block';});
+    document.getElementById('addDroneBtn').addEventListener('click',function(){var n=document.getElementById('droneName').value.trim();var a=document.getElementById('droneAddr').value.trim();if(!n||!a){statusBar.innerHTML='请填写名称和地址';return;}PathManager.droneList.push({name:n,addr:a});PathManager.saveDronesToStorage();refreshDroneList();statusBar.innerHTML='已添加无人机：'+n;});
+    document.getElementById('landBtn').addEventListener('click',function(){
+        if(!RelCoords.internalCamera)return;
+        var vc=AbsCoords.worldToVoxel(RelCoords.internalCamera.position.x,RelCoords.internalCamera.position.y,RelCoords.internalCamera.position.z);
+        PathManager.pathPoints=[{type:'QD',x:vc.x,y:vc.y,z:vc.z},{type:'D2',x:vc.x,y:vc.y-1,z:vc.z},{type:'D3',x:vc.x,y:vc.y-2,z:vc.z},{type:'ZD',x:vc.x,y:vc.y-3,z:vc.z}];
+        PathManager.syncPathToText();PathManager.refreshSceneVisuals(RelCoords.scene);
+        statusBar.innerHTML='降落路径已生成 @ ('+vc.x+','+vc.y+','+vc.z+') ↓';
+    });
+    // 角标开关
+    document.getElementById('toggleCornerLabels').addEventListener('click',function(){
+        FixedFrame.showCornerLabels=!FixedFrame.showCornerLabels;
+        this.textContent=FixedFrame.showCornerLabels?'隐藏角标':'显示角标';
+        FixedFrame.updateCornerLabels();
+        statusBar.innerHTML='角标已'+(FixedFrame.showCornerLabels?'显示':'隐藏');
+    });
+}
+
+function updateBoxAppearance(){
+    if(FixedFrame.gridLines){for(var i=0;i<FixedFrame.gridLines.children.length;i++)FixedFrame.gridLines.children[i].material.opacity=FixedFrame.opacityGrid;}
+}
+
+function bindLockButtons(){
+    document.getElementById('lockTranslateBtn').addEventListener('click',function(){RelCoords.lockTranslate=!RelCoords.lockTranslate;if(RelCoords.lockTranslate)this.classList.add('lock-active');else this.classList.remove('lock-active');});
+    document.getElementById('lockRotateBtn').addEventListener('click',function(){RelCoords.lockRotate=!RelCoords.lockRotate;if(RelCoords.lockRotate)this.classList.add('lock-active');else this.classList.remove('lock-active');});
+    document.getElementById('lockScaleBtn').addEventListener('click',function(){RelCoords.lockScale=!RelCoords.lockScale;if(RelCoords.lockScale)this.classList.add('lock-active');else this.classList.remove('lock-active');});
+}
+
+function bindSendButtons(){
+    document.getElementById('sendBLEBtn').addEventListener('click',function(){var pkg=outputArea.textContent;if(!pkg||pkg==='等待输入坐标...'||pkg.indexOf('❌')===0||pkg.indexOf('路径已更新')===0){statusBar.innerHTML='请先生成指令包';return;}navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:['0000ffe0-0000-1000-8000-00805f9b34fb']}).then(function(d){return d.gatt.connect();}).then(function(s){return s.getPrimaryService('0000ffe0-0000-1000-8000-00805f9b34fb');}).then(function(s){return s.getCharacteristic('0000ffe1-0000-1000-8000-00805f9b34fb');}).then(function(c){return c.writeValue(new TextEncoder().encode(pkg));}).then(function(){statusBar.innerHTML='蓝牙发送成功';showSendStatus(true);}).catch(function(e){statusBar.innerHTML='蓝牙发送失败: '+e.message;showSendStatus(false);});});
+    document.getElementById('sendWifiBtn').addEventListener('click',function(){var pkg=outputArea.textContent;if(!pkg||pkg==='等待输入坐标...'||pkg.indexOf('❌')===0||pkg.indexOf('路径已更新')===0){statusBar.innerHTML='请先生成指令包';return;}var ip=prompt('请输入无人机IP地址和端口\n例如: 192.168.1.100:8080','192.168.1.100:8080');if(!ip)return;try{var ws=new WebSocket('ws://'+ip);ws.onopen=function(){ws.send(JSON.stringify({type:'d3_command',data:pkg,timestamp:Date.now()}));statusBar.innerHTML='WiFi发送成功';showSendStatus(true);ws.close();};ws.onerror=function(){statusBar.innerHTML='WiFi连接失败';showSendStatus(false);};}catch(e){statusBar.innerHTML='WiFi发送失败: '+e.message;showSendStatus(false);}});
+}
+function showSendStatus(ok){var el=document.getElementById('sendStatus');el.style.display='inline-block';el.className='send-status '+(ok?'ok':'err');el.textContent=ok?'发送成功':'发送失败';setTimeout(function(){el.style.display='none';},3000);}
+
+function refreshSavedPathSelect(){
+    var sel=document.getElementById('savedPathSelect');sel.innerHTML='<option value="">已保存的路径</option>';
+    for(var i=0;i<PathManager.savedPaths.length;i++){var opt=document.createElement('option');opt.value=i;opt.textContent=PathManager.savedPaths[i].name||('路径'+(i+1));sel.appendChild(opt);}
+}
+function refreshDroneList(){
+    var el=document.getElementById('droneListItems');el.innerHTML='';
+    for(var i=0;i<PathManager.droneList.length;i++){var d=PathManager.droneList[i];el.innerHTML+='<div class="control-row"><span>'+d.name+' | '+d.addr+'</span><button class="danger" onclick="PathManager.droneList.splice('+i+',1);PathManager.saveDronesToStorage();refreshDroneList();">移除</button></div>';}
+}
+
+/* ========== Tab切换 ========== */
+var activeRenderLoops={external:false,internal:false,manhattan:false,video:false};
+function stopRenderLoop(name){
+    if(name==='external'&&RelCoords.externalAnimId){cancelAnimationFrame(RelCoords.externalAnimId);RelCoords.externalAnimId=null;activeRenderLoops.external=false;}
+    if(name==='internal'&&RelCoords.internalAnimId){cancelAnimationFrame(RelCoords.internalAnimId);RelCoords.internalAnimId=null;activeRenderLoops.internal=false;}
+    if(name==='manhattan'&&RelCoords.manhattanAnimId){cancelAnimationFrame(RelCoords.manhattanAnimId);RelCoords.manhattanAnimId=null;activeRenderLoops.manhattan=false;}
+}
+function startRenderLoop(name){
+    if(name==='external'&&!activeRenderLoops.external&&RelCoords.externalRenderer&&RelCoords.externalCamera){activeRenderLoops.external=true;(function l(){if(!activeRenderLoops.external)return;RelCoords.externalRenderer.render(RelCoords.scene,RelCoords.externalCamera);RelCoords.externalAnimId=requestAnimationFrame(l);})();}
+    if(name==='internal'&&!activeRenderLoops.internal&&RelCoords.internalRenderer&&RelCoords.internalCamera){if(!RelCoords.internalReady){statusBar.innerHTML='内部窗口正在初始化...';return;}activeRenderLoops.internal=true;(function l(){if(!activeRenderLoops.internal)return;RelCoords.updateInternalMovement();RelCoords.internalRenderer.render(RelCoords.scene,RelCoords.internalCamera);RelCoords.internalAnimId=requestAnimationFrame(l);})();}
+    if(name==='manhattan'&&!activeRenderLoops.manhattan){activeRenderLoops.manhattan=true;drawManhattanWindow();activeRenderLoops.manhattan=false;}
+}
+
+function drawManhattanWindow(){
+    var canvas=document.getElementById('manhattanCanvas');if(!canvas)return;
+    var w=document.getElementById('windowContainer').clientWidth,h=document.getElementById('windowContainer').clientHeight;
+    canvas.width=w;canvas.height=h;var ctx=canvas.getContext('2d');ctx.clearRect(0,0,w,h);ctx.fillStyle='#121420';ctx.fillRect(0,0,w,h);
+    var gs=15,cols=Math.floor(w/gs),rows=Math.floor(h/gs);ctx.strokeStyle='#333';ctx.lineWidth=0.5;
+    for(var i=0;i<=cols;i++){ctx.beginPath();ctx.moveTo(i*gs,0);ctx.lineTo(i*gs,rows*gs);ctx.stroke();}
+    for(var j=0;j<=rows;j++){ctx.beginPath();ctx.moveTo(0,j*gs);ctx.lineTo(cols*gs,j*gs);ctx.stroke();}
+    if(PathManager.pathPoints.length>0){ctx.strokeStyle='#ff3333';ctx.lineWidth=2;ctx.beginPath();var sx=w/(FixedFrame.voxelAB||22),sz=h/(FixedFrame.voxelAD||22);ctx.moveTo(PathManager.pathPoints[0].x*sx,PathManager.pathPoints[0].z*sz);for(var k=1;k<PathManager.pathPoints.length;k++)ctx.lineTo(PathManager.pathPoints[k].x*sx,PathManager.pathPoints[k].z*sz);ctx.stroke();}
+    ctx.fillStyle='#fff';ctx.font='12px monospace';ctx.fillText('二维曼哈顿俯视图',10,20);
+}
+
+/* ========== Three.js场景初始化 ========== */
+function initThreeScene(){
+    if(typeof THREE==='undefined'){setTimeout(initThreeScene,500);return;}
+    var scene=new THREE.Scene();
+    RelCoords.initScene(scene);FixedFrame.initScene(scene);
+
+    var extPanel=document.getElementById('externalPanel');
+    RelCoords.externalRenderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+    RelCoords.externalRenderer.setSize(extPanel.clientWidth,extPanel.clientHeight);
+    RelCoords.externalRenderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+    extPanel.appendChild(RelCoords.externalRenderer.domElement);
+    RelCoords.externalRenderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;';
+    RelCoords.externalCamera=new THREE.PerspectiveCamera(50,extPanel.clientWidth/extPanel.clientHeight,0.1,100);
+    RelCoords.externalCamera.position.set(8,5,8);RelCoords.externalCamera.lookAt(0,0,0);
+    RelCoords.externalControls=createOrbitControls(RelCoords.externalCamera,RelCoords.externalRenderer.domElement);
+
+    var intPanel=document.getElementById('internalPanel');
+    RelCoords.internalRenderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+    RelCoords.internalRenderer.setSize(intPanel.clientWidth,intPanel.clientHeight);
+    RelCoords.internalRenderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+    intPanel.appendChild(RelCoords.internalRenderer.domElement);
+    RelCoords.internalRenderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;';
+    RelCoords.internalCamera=new THREE.PerspectiveCamera(70,intPanel.clientWidth/intPanel.clientHeight,0.01,100);
+    RelCoords.internalCamera.position.set(0,0,5);RelCoords.internalCamera.lookAt(0,0,0);
+    RelCoords.internalReady=true;
+
+    scene.add(new THREE.AmbientLight(0xffffff,0.6));
+    var dl=new THREE.DirectionalLight(0xffffff,0.4);dl.position.set(10,10,10);scene.add(dl);
+
+    FixedFrame.rebuildHollowBox();
+    RelCoords.setupInternalControls();
+    startRenderLoop('external');
+
+    window.addEventListener('resize',function(){
+        if(RelCoords.externalRenderer){var w=extPanel.clientWidth,h=extPanel.clientHeight;RelCoords.externalRenderer.setSize(w,h);RelCoords.externalCamera.aspect=w/h;RelCoords.externalCamera.updateProjectionMatrix();}
+        if(RelCoords.internalRenderer){var w=intPanel.clientWidth,h=intPanel.clientHeight;RelCoords.internalRenderer.setSize(w,h);RelCoords.internalCamera.aspect=w/h;RelCoords.internalCamera.updateProjectionMatrix();}
+    });
+    statusBar.innerHTML='D3-真实承诺 v1.91 就绪 | 四层架构重构';
+}
+
+function createOrbitControls(camera,domElement){
+    var isDown=false,isRightDrag=false,lastX=0,lastY=0;var target=new THREE.Vector3(0,0,0);
+    var spherical=new THREE.Spherical().setFromVector3(new THREE.Vector3().copy(camera.position).sub(target));
+    domElement.addEventListener('pointerdown',function(e){isRightDrag=(e.button===2||e.button===1);isDown=true;lastX=e.clientX;lastY=e.clientY;e.preventDefault();});
+    window.addEventListener('pointermove',function(e){
+        if(!isDown)return;var dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;
+        if(isRightDrag){if(RelCoords.lockTranslate)return;var right=new THREE.Vector3().crossVectors(camera.up,new THREE.Vector3().copy(camera.position).normalize()).normalize();var up=camera.up.clone().normalize();target.add(right.multiplyScalar(-dx*0.01)).add(up.multiplyScalar(dy*0.01));}
+        else{if(RelCoords.lockRotate)return;spherical.theta-=dx*0.005;spherical.phi-=dy*0.005;spherical.phi=Math.max(0.1,Math.min(Math.PI-0.1,spherical.phi));}
+        var offset=new THREE.Vector3().setFromSpherical(spherical);camera.position.copy(target).add(offset);camera.lookAt(target);
+    });
+    window.addEventListener('pointerup',function(){isDown=false;isRightDrag=false;});
+    domElement.addEventListener('wheel',function(e){if(RelCoords.lockScale)return;spherical.radius*=(e.deltaY>0)?1.05:0.95;spherical.radius=Math.max(0.05,Math.min(100,spherical.radius));var offset=new THREE.Vector3().setFromSpherical(spherical);camera.position.copy(target).add(offset);camera.lookAt(target);e.preventDefault();});
+    domElement.addEventListener('contextmenu',function(e){e.preventDefault();});
+    return{target:target,update:function(){spherical.setFromVector3(new THREE.Vector3().copy(camera.position).sub(target));}};
+}
+
+/* ========== 内部窗口点击交互 ========== */
+document.getElementById('internalPanel').addEventListener('click',function(e){
+    if(RelCoords.internalMode==='observe')return;
+    if(!RelCoords.scene||!RelCoords.internalCamera)return;
+    var raycaster=new THREE.Raycaster();var mouse=new THREE.Vector2();
+    var rect=this.getBoundingClientRect();
+    mouse.x=((e.clientX-rect.left)/rect.width)*2-1;mouse.y=-((e.clientY-rect.top)/rect.height)*2+1;
+    raycaster.setFromCamera(mouse,RelCoords.internalCamera);
+    var allObjects=[];
+    if(FixedFrame.hollowBoxMeshes)for(var i=0;i<FixedFrame.hollowBoxMeshes.length;i++)allObjects.push(FixedFrame.hollowBoxMeshes[i]);
+    if(PathManager.obstacleMeshes)for(var j=0;j<PathManager.obstacleMeshes.length;j++)allObjects.push(PathManager.obstacleMeshes[j]);
+    if(PathManager.landBlocks)for(var k=0;k<PathManager.landBlocks.length;k++){for(var l=0;l<PathManager.landBlocks[k].length;l++)allObjects.push(PathManager.landBlocks[k][l]);}
+    if(PathManager.anchorMeshes)for(var m=0;m<PathManager.anchorMeshes.length;m++)allObjects.push(PathManager.anchorMeshes[m]);
+    if(allObjects.length===0)return;
+    var intersects=raycaster.intersectObjects(allObjects,false);
+    if(intersects.length>0){
+        var vc=AbsCoords.worldToVoxel(intersects[0].point.x,intersects[0].point.y,intersects[0].point.z);
+        if(RelCoords.internalMode==='place'){PathManager.placeBlock(vc,'path',RelCoords.scene);}
+        else if(RelCoords.internalMode==='obstacle'){PathManager.placeBlock(vc,'obstacle',RelCoords.scene);}
+        else if(RelCoords.internalMode==='remove'){PathManager.removeBlock(vc,RelCoords.scene);}
+        else if(RelCoords.internalMode==='endpoint'){var key=vc.x+','+vc.y+','+vc.z;PathManager.endpointClickCount[key]=(PathManager.endpointClickCount[key]||0)+1;if(PathManager.endpointClickCount[key]>=3){PathManager.markAsEndpoint(vc);PathManager.endpointClickCount={};}else{statusBar.innerHTML='终点模式：已点击 '+PathManager.endpointClickCount[key]+' 次，需3次确认';}}
+    }
+});
+
+/* ========== 键盘模式切换 ========== */
+window.addEventListener('keydown',function(e){
+    if(!document.getElementById('internalPanel').classList.contains('active'))return;
+    if(document.activeElement===coordInput)return;
+    var mi=document.getElementById('internalMode');
+    if(e.key==='1'){RelCoords.internalMode='place';mi.textContent='放置模式';e.preventDefault();}
+    else if(e.key==='2'){RelCoords.internalMode='obstacle';mi.textContent='障碍模式';
+        PathManager.key2PressCount++;if(PathManager.key2PressTimer)clearTimeout(PathManager.key2PressTimer);
+        PathManager.key2PressTimer=setTimeout(function(){PathManager.key2PressCount=0;},1000);
+        if(PathManager.key2PressCount>=10){PathManager.clearAllObstacles(RelCoords.scene);PathManager.key2PressCount=0;}
+        e.preventDefault();
+    }else if(e.key==='0'){RelCoords.internalMode='remove';mi.textContent='拆除模式';e.preventDefault();}
+    else if(e.key==='8'){RelCoords.internalMode='endpoint';mi.textContent='终点模式';e.preventDefault();}
+    else if(e.key==='9'){PathManager.closedLoopMode=!PathManager.closedLoopMode;document.getElementById('toggleClosedLoopBtn').textContent=PathManager.closedLoopMode?'闭环模式':'开环模式';document.getElementById('toggleClosedLoopBtn').classList.toggle('lock-active',PathManager.closedLoopMode);mi.textContent=PathManager.closedLoopMode?'终点(闭环)':'终点(开环)';statusBar.innerHTML='已切换为'+(PathManager.closedLoopMode?'闭环':'开环')+'模式';PathManager.refreshSceneVisuals(RelCoords.scene);e.preventDefault();}
+    else if(e.key==='Escape'){RelCoords.internalMode='observe';mi.textContent='观察模式';e.preventDefault();}
+});
+
+/* ========== 启动 ========== */
+function syncMeterDisplay(){document.getElementById('meterAD').value=FixedFrame.meterAD.toFixed(2);document.getElementById('meterAE').value=FixedFrame.meterAE.toFixed(2);}
+window.addEventListener('DOMContentLoaded',function(){
+    try{
+        initThreeScene();bindEvents();bindLockButtons();bindSendButtons();
+        refreshSavedPathSelect();refreshDroneList();
+        var tabBtns=document.querySelectorAll('.tab-btn');var panels=document.querySelectorAll('.window-panel');
+        tabBtns.forEach(function(btn){btn.addEventListener('click',function(){var target=this.dataset.panel;var old=document.querySelector('.tab-btn.active');if(old)stopRenderLoop(old.dataset.panel);tabBtns.forEach(function(b){b.classList.remove('active');});this.classList.add('active');panels.forEach(function(p){p.classList.remove('active');});document.getElementById(target+'Panel').classList.add('active');startRenderLoop(target);});});
+        document.querySelectorAll('.window-reset-btn').forEach(function(btn){btn.addEventListener('click',function(e){e.stopPropagation();var win=this.dataset.window;if(win==='external'&&RelCoords.externalCamera){RelCoords.externalCamera.position.set(8,5,8);RelCoords.externalCamera.lookAt(0,0,0);RelCoords.externalControls.target.set(0,0,0);RelCoords.externalControls.update();statusBar.innerHTML='外部视角已重置';}else if(win==='internal'&&RelCoords.internalCamera){RelCoords.internalCamera.position.set(0,0,5);RelCoords.internalCamera.lookAt(0,0,0);RelCoords.internalPitch=0;RelCoords.internalYaw=0;statusBar.innerHTML='内部视角已重置';}else if(win==='manhattan'){drawManhattanWindow();statusBar.innerHTML='曼哈顿窗口已重置';}else if(win==='video'){statusBar.innerHTML='视频流窗口已重置';}});});
+        document.getElementById('faceOpacitySlider').addEventListener('input',function(){FixedFrame.opacityFace=parseInt(this.value)/100;updateBoxAppearance();});
+        document.getElementById('gridOpacitySlider').addEventListener('input',function(){FixedFrame.opacityGrid=parseInt(this.value)/100;updateBoxAppearance();});
+        document.getElementById('voxelAB').addEventListener('blur',updateWorldParams);document.getElementById('voxelAB').addEventListener('change',updateWorldParams);
+        document.getElementById('voxelAD').addEventListener('blur',updateWorldParams);document.getElementById('voxelAD').addEventListener('change',updateWorldParams);
+        document.getElementById('voxelAE').addEventListener('blur',updateWorldParams);document.getElementById('voxelAE').addEventListener('change',updateWorldParams);
+        document.getElementById('meterAB').addEventListener('blur',updateWorldParams);document.getElementById('meterAB').addEventListener('change',updateWorldParams);
+        var video=document.getElementById('cameraFeed');if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia){navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(function(s){video.srcObject=s;}).catch(function(e){console.warn('摄像头无权限',e);});}
+        document.getElementById('helpBtn').addEventListener('click',function(){document.getElementById('helpModal').classList.add('show');});
+        document.getElementById('closeHelpBtn').addEventListener('click',function(){document.getElementById('helpModal').classList.remove('show');});
+        document.getElementById('helpModal').addEventListener('click',function(e){if(e.target===e.currentTarget)e.currentTarget.classList.remove('show');});
+        syncMeterDisplay();statusBar.innerHTML='D3-真实承诺 v1.91 就绪 | 四层架构重构';
+    }catch(e){statusBar.innerHTML='初始化错误: '+e.message;console.error(e);}
+});
+
+function updateWorldParams(){
+    var vab=parseInt(document.getElementById('voxelAB').value);var vad=parseInt(document.getElementById('voxelAD').value);var vae=parseInt(document.getElementById('voxelAE').value);
+    var mab=parseFloat(document.getElementById('meterAB').value);
+    if(isNaN(vab)||vab<2)vab=2;if(vab>50)vab=50;if(isNaN(vad)||vad<2)vad=2;if(vad>50)vad=50;if(isNaN(vae)||vae<2)vae=2;if(vae>50)vae=50;
+    if(isNaN(mab)||mab<=0)mab=3.0;
+    document.getElementById('voxelAB').value=vab;document.getElementById('voxelAD').value=vad;document.getElementById('voxelAE').value=vae;document.getElementById('meterAB').value=mab;
+    var oldVab=FixedFrame.voxelAB,oldVad=FixedFrame.voxelAD,oldVae=FixedFrame.voxelAE;
+    FixedFrame.voxelAB=vab;FixedFrame.voxelAD=vad;FixedFrame.voxelAE=vae;FixedFrame.meterAB=mab;
+    FixedFrame.recalcMeters();syncMeterDisplay();
+    if(oldVab!==vab||oldVad!==vad||oldVae!==vae)FixedFrame.rebuildHollowBox();
+    PathManager.refreshSceneVisuals(RelCoords.scene);
+}
+</script>
+</body>
+</html>

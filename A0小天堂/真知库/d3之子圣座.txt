@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>D3之子 · 圣座 | 债务驱动引擎</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: text;
+        }
+
+        body {
+            background: white;
+            margin: 0;
+            padding: 20px;
+            font-family: 'Segoe UI', 'Consolas', monospace;
+            color: black;
+        }
+
+        /* 主容器 */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* 血色边框 */
+        .blood-border {
+            border: 2px solid #8b0000;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 20px;
+            background: white;
+        }
+
+        /* 标题区 */
+        .title {
+            text-align: center;
+            margin-bottom: 20px;
+            border-bottom: 3px solid #8b0000;
+            padding-bottom: 10px;
+        }
+        .title h1 {
+            color: #8b0000;
+            margin: 0;
+            font-size: 28px;
+            letter-spacing: 2px;
+        }
+        .title p {
+            color: #666;
+            margin: 5px 0 0;
+            font-size: 12px;
+        }
+
+        /* 模式切换 */
+        .mode-bar {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 10px;
+        }
+        .mode-btn {
+            background: none;
+            border: none;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            padding: 6px 16px;
+            border-radius: 20px;
+            color: #333;
+            transition: 0.2s;
+        }
+        .mode-btn.active {
+            background: #8b0000;
+            color: white;
+        }
+        .mode-btn:hover:not(.active) {
+            background: #ddd;
+        }
+
+        /* 输入输出区域 */
+        .io-panel {
+            display: none;
+        }
+        .io-panel.active {
+            display: block;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+            border: 1px solid #8b0000;
+            border-radius: 6px;
+            padding: 10px;
+            background: #fefefe;
+            resize: vertical;
+        }
+
+        .param-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            margin: 12px 0;
+            padding: 10px;
+            background: #f9f9f9;
+            border-left: 4px solid #8b0000;
+        }
+        .param-row label {
+            font-weight: bold;
+            min-width: 70px;
+        }
+        .param-row input {
+            padding: 6px 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 120px;
+        }
+        button {
+            background: #8b0000;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.15s;
+        }
+        button:hover {
+            background: #b22222;
+        }
+        button.secondary {
+            background: #333;
+        }
+        button.secondary:hover {
+            background: #555;
+        }
+        .danger-btn {
+            background: #aa0000;
+        }
+
+        /* 规则面板 */
+        .rule-panel {
+            background: #f5f5f5;
+            padding: 12px;
+            border-left: 4px solid #8b0000;
+            margin: 12px 0;
+        }
+        .rule-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .rule-select {
+            padding: 6px;
+            border: 1px solid #8b0000;
+            border-radius: 4px;
+            min-width: 120px;
+        }
+        .rule-input {
+            flex: 2;
+            min-width: 250px;
+            padding: 6px;
+            border: 1px solid #8b0000;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .rule-explain {
+            font-size: 12px;
+            color: #8b0000;
+            background: #fff0f0;
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 8px;
+        }
+
+        /* 表格容器 */
+        .table-wrapper {
+            overflow-x: auto;
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #8b0000;
+            border-radius: 6px;
+            margin: 12px 0;
+            background: white;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            font-family: monospace;
+        }
+        th {
+            background: #8b0000;
+            color: white;
+            padding: 8px 6px;
+            border: 1px solid #a00000;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            font-weight: bold;
+        }
+        td {
+            border: 1px solid #ddd;
+            padding: 6px 4px;
+            text-align: center;
+            background: white;
+            color: black;
+        }
+        td.editable {
+            cursor: text;
+            background: #fffef7;
+        }
+        td.editable:hover {
+            background: #fff0e0;
+        }
+        .search-highlight {
+            background-color: #ffcc00;
+        }
+        .footer-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 12px;
+        }
+        .search-box {
+            margin: 8px 0;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .search-box input {
+            flex: 1;
+            padding: 6px;
+            border: 1px solid #8b0000;
+            border-radius: 4px;
+        }
+        hr {
+            border-color: #8b0000;
+        }
+        .status {
+            font-size: 12px;
+            color: #8b0000;
+            margin-top: 8px;
+            padding: 6px;
+            background: #fff0f0;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="title blood-border">
+        <h1>D3之子 · 圣座</h1>
+        <p>债务驱动引擎 | 46列全可控 | 双向转换 | 六种规则</p>
+    </div>
+
+    <!-- 模式切换 -->
+    <div class="mode-bar">
+        <button class="mode-btn active" data-mode="csv">📄 CSV文本模式</button>
+        <button class="mode-btn" data-mode="voxel">🎲 体素坐标模式</button>
+    </div>
+
+    <!-- CSV模式 -->
+    <div id="csvMode" class="io-panel active blood-border">
+        <h3 style="color:#8b0000;">📋 输入CSV文本（逗号分隔）</h3>
+        <textarea id="csvInput" placeholder='粘贴 D3 导出的 TXT 文本，例如：
+latitude,longitude,altitude(m),heading(deg),curvesize(m),rotationdir,gimbalmode,gimbalpitchangle,actiontype1,actionparam1,actiontype2,actionparam2,actiontype3,actionparam3,actiontype4,actionparam4,actiontype5,actionparam5,actiontype6,actionparam6,actiontype7,actionparam7,actiontype8,actionparam8,actiontype9,actionparam9,actiontype10,actionparam10,actiontype11,actionparam11,actiontype12,actionparam12,actiontype13,actionparam13,actiontype14,actionparam14,actiontype15,actionparam15,altitudemode,speed(m/s),poi_latitude,poi_longitude,poi_altitude(m),poi_altitudemode,photo_timeinterval,photo_distinterval
+29.994706,122.198847,30.5,0,0,0,0,0,-1,0,-1,0,-1,0,-1,0,-1,0,-1,0,-1,0,-1,0,-1,0,-1,0,-1,0,-1,0,-1,0,-1,0,-1,0,0,5.0,0,0,0,0,-1.0,-1.0'></textarea>
+        <div class="param-row">
+            <button id="parseCsvBtn">🔍 解析并生成表格</button>
+            <button id="reverseToVoxelBtn" class="secondary">🔄 逆向 → 体素坐标流</button>
+            <button id="clearCsvBtn" class="danger-btn">🗑 清空</button>
+        </div>
+        <div id="reverseResult" class="rule-panel" style="display:none;">
+            <strong>📌 逆向体素坐标流（QD/D2/ZD格式）：</strong>
+            <pre id="voxelStreamOutput" style="background:#f9f9f9; padding:8px; overflow-x:auto; font-size:11px;"></pre>
+        </div>
+    </div>
+
+    <!-- 体素坐标模式 -->
+    <div id="voxelMode" class="io-panel blood-border">
+        <h3 style="color:#8b0000;">🎲 输入体素坐标流（QD/D2/ZD格式）</h3>
+        <textarea id="voxelInput" placeholder='QD(10,0,0)
+D2(9,4,0)
+D3(7,7,0)
+D4(4,9,0)
+D5(0,10,0)
+D6(-4,9,0)
+D7(-7,7,0)
+D8(-9,4,0)
+D9(-10,0,0)
+D10(-9,-4,0)
+D11(-7,-7,0)
+D12(-4,-9,0)
+D13(0,-10,0)
+D14(4,-9,0)
+D15(7,-7,0)
+D16(9,-4,0)
+ZD(10,0,0)'></textarea>
+        <div class="param-row">
+            <label>原点纬度:</label><input type="number" id="voxelOriginLat" value="29.992756" step="0.000001">
+            <label>经度:</label><input type="number" id="voxelOriginLng" value="122.204583" step="0.000001">
+            <label>高度(m):</label><input type="number" id="voxelOriginAlt" value="50.0" step="0.1">
+            <label>体素边长(m):</label><input type="number" id="voxelMeterPer" value="0.5" step="0.1">
+            <button id="autoRecommendBtn" class="secondary">✨ 自动推荐</button>
+        </div>
+        <div class="param-row">
+            <button id="genTableFromVoxelBtn">📐 生成表格</button>
+            <button id="clearVoxelBtn" class="danger-btn">🗑 清空</button>
+        </div>
+        <div class="status" id="voxelStatus"></div>
+    </div>
+
+    <!-- 表格预览 + 规则引擎 -->
+    <div class="blood-border">
+        <h3 style="color:#8b0000;">📊 46列表格（可双击编辑）</h3>
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="🔍 搜索内容...">
+            <button id="searchPrevBtn">↑ 上一个</button>
+            <button id="searchNextBtn">↓ 下一个</button>
+            <button id="clearSearchBtn">清除高亮</button>
+        </div>
+        <div id="tableWrapper" class="table-wrapper">
+            <div style="padding: 20px; text-align: center; color: #999;">请先输入数据并解析</div>
+        </div>
+    </div>
+
+    <!-- 规则引擎面板 -->
+    <div class="rule-panel">
+        <h4 style="color:#8b0000; margin:0 0 8px 0;">⚙️ 债务驱动规则引擎</h4>
+        <div class="rule-row">
+            <select id="ruleColumnSelect" class="rule-select"></select>
+            <input type="text" id="ruleExpression" class="rule-input" placeholder='例如: 奇偶(5,15)  或  正弦波(5,15,10)'>
+            <button id="applyRuleBtn">应用规则</button>
+        </div>
+        <div id="ruleExplanation" class="rule-explain">
+            💡 选择列 → 输入规则 → 应用<br>
+            <strong>全局值:</strong> 16<br>
+            <strong>分段:</strong> QD-D80=16, D80-ZD=5<br>
+            <strong>奇偶:</strong> 奇偶(5,15)<br>
+            <strong>质数:</strong> 质数(20)<br>
+            <strong>正弦波:</strong> 正弦波(5,15,10)<br>
+            <strong>斐波那契:</strong> 斐波那契(5,15)
+        </div>
+    </div>
+
+    <div class="footer-buttons">
+        <button id="exportTxtBtn" class="secondary">📎 导出 TXT（改后缀.csv）</button>
+        <button id="resetTableBtn" class="danger-btn">重置表格</button>
+    </div>
+    <div id="statusMsg" class="status"></div>
+</div>
+
+<script>
+    // ==================== 全局变量 ====================
+    let currentHeaders = [];      // 46列英文名
+    let currentData = [];         // 二维数组: [行][列]
+    let currentPoints = [];       // 体素点数组 {x,y,z}
+    let currentOrigin = { lat: 29.992756, lng: 122.204583, alt: 50.0, meterPerVoxel: 0.5 };
+    let searchResults = [];
+    let searchIndex = -1;
+
+    // 46列完整中文映射
+    const columnMapping = {
+        "latitude": "纬度", "longitude": "经度", "altitude(m)": "海拔高度", "heading(deg)": "航向角",
+        "curvesize(m)": "曲线半径", "rotationdir": "旋转方向", "gimbalmode": "云台模式",
+        "gimbalpitchangle": "云台俯仰角", "actiontype1": "动作类型1", "actionparam1": "动作参数1",
+        "actiontype2": "动作类型2", "actionparam2": "动作参数2", "actiontype3": "动作类型3",
+        "actionparam3": "动作参数3", "actiontype4": "动作类型4", "actionparam4": "动作参数4",
+        "actiontype5": "动作类型5", "actionparam5": "动作参数5", "actiontype6": "动作类型6",
+        "actionparam6": "动作参数6", "actiontype7": "动作类型7", "actionparam7": "动作参数7",
+        "actiontype8": "动作类型8", "actionparam8": "动作参数8", "actiontype9": "动作类型9",
+        "actionparam9": "动作参数9", "actiontype10": "动作类型10", "actionparam10": "动作参数10",
+        "actiontype11": "动作类型11", "actionparam11": "动作参数11", "actiontype12": "动作类型12",
+        "actionparam12": "动作参数12", "actiontype13": "动作类型13", "actionparam13": "动作参数13",
+        "actiontype14": "动作类型14", "actionparam14": "动作参数14", "actiontype15": "动作类型15",
+        "actionparam15": "动作参数15", "altitudemode": "高度模式", "speed(m/s)": "飞行速度",
+        "poi_latitude": "兴趣点纬度", "poi_longitude": "兴趣点经度", "poi_altitude(m)": "兴趣点高度",
+        "poi_altitudemode": "兴趣点高度模式", "photo_timeinterval": "拍照时间间隔", "photo_distinterval": "拍照距离间隔"
+    };
+
+    // 默认列名（英文）
+    const defaultHeaders = [
+        "latitude","longitude","altitude(m)","heading(deg)","curvesize(m)","rotationdir",
+        "gimbalmode","gimbalpitchangle","actiontype1","actionparam1","actiontype2","actionparam2",
+        "actiontype3","actionparam3","actiontype4","actionparam4","actiontype5","actionparam5",
+        "actiontype6","actionparam6","actiontype7","actionparam7","actiontype8","actionparam8",
+        "actiontype9","actionparam9","actiontype10","actionparam10","actiontype11","actionparam11",
+        "actiontype12","actionparam12","actiontype13","actionparam13","actiontype14","actionparam14",
+        "actiontype15","actionparam15","altitudemode","speed(m/s)","poi_latitude","poi_longitude",
+        "poi_altitude(m)","poi_altitudemode","photo_timeinterval","photo_distinterval"
+    ];
+
+    // ==================== 核心公式 ====================
+    function voxelToGPS(voxel, origin) {
+        let latStep = origin.meterPerVoxel / 111320.0;
+        let lngStep = origin.meterPerVoxel / (111320.0 * Math.cos(origin.lat * Math.PI / 180.0));
+        let lat = origin.lat + voxel.z * latStep;
+        let lng = origin.lng + voxel.x * lngStep;
+        let alt = origin.alt + voxel.y * origin.meterPerVoxel;
+        return { lat, lng, alt };
+    }
+
+    function gpsToVoxel(gps, origin) {
+        let latStep = origin.meterPerVoxel / 111320.0;
+        let lngStep = origin.meterPerVoxel / (111320.0 * Math.cos(origin.lat * Math.PI / 180.0));
+        let z = Math.round((gps.lat - origin.lat) / latStep);
+        let x = Math.round((gps.lng - origin.lng) / lngStep);
+        let y = Math.round((gps.alt - origin.alt) / origin.meterPerVoxel);
+        return { x, y, z };
+    }
+
+    // 解析体素坐标文本
+    function parseVoxelPoints(text) {
+        let lines = text.split(/\r?\n/);
+        let points = [];
+        for (let line of lines) {
+            let match = line.match(/(QD|D\d+|ZD)\((-?\d+),(-?\d+),(-?\d+)\)/);
+            if (match) {
+                points.push({ type: match[1], x: parseInt(match[2]), y: parseInt(match[3]), z: parseInt(match[4]) });
+            }
+        }
+        return points;
+    }
+
+    // 从体素点生成表格数据
+    function generateTableFromVoxel(points, origin) {
+        if (!points.length) return { headers: defaultHeaders, data: [] };
+        let data = [];
+        for (let p of points) {
+            let gps = voxelToGPS(p, origin);
+            let row = {};
+            for (let h of defaultHeaders) row[h] = getDefaultValue(h);
+            row["latitude"] = gps.lat;
+            row["longitude"] = gps.lng;
+            row["altitude(m)"] = gps.alt;
+            data.push(row);
+        }
+        return { headers: defaultHeaders, data };
+    }
+
+    function getDefaultValue(col) {
+        if (col === "speed(m/s)") return 5.0;
+        if (col === "altitudemode") return 0;
+        if (col === "gimbalmode") return 0;
+        if (col === "gimbalpitchangle") return 0;
+        if (col === "heading(deg)") return 0;
+        if (col.startsWith("actiontype")) return -1;
+        if (col.startsWith("actionparam")) return 0;
+        if (col === "curvesize(m)" || col === "rotationdir") return 0;
+        if (col === "poi_latitude" || col === "poi_longitude" || col === "poi_altitude(m)" || col === "poi_altitudemode") return 0;
+        if (col === "photo_timeinterval" || col === "photo_distinterval") return -1.0;
+        return 0;
+    }
+
+    // 解析CSV文本
+    function parseCSV(text) {
+        let lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length < 2) return null;
+        let headers = lines[0].split(',').map(h => h.trim());
+        let data = [];
+        for (let i = 1; i < lines.length; i++) {
+            let vals = lines[i].split(',').map(v => v.trim());
+            let row = {};
+            for (let j = 0; j < headers.length && j < vals.length; j++) {
+                let val = parseFloat(vals[j]);
+                row[headers[j]] = isNaN(val) ? vals[j] : val;
+            }
+            data.push(row);
+        }
+        return { headers, data };
+    }
+
+    // 渲染表格
+    function renderTable() {
+        let wrapper = document.getElementById("tableWrapper");
+        if (!currentHeaders.length || !currentData.length) {
+            wrapper.innerHTML = '<div style="padding:20px; text-align:center; color:#999;">暂无数据，请先解析</div>';
+            return;
+        }
+        let html = '<table><thead><tr>';
+        for (let h of currentHeaders) {
+            let chn = columnMapping[h] || h;
+            html += `<th>${chn}</th>`;
+        }
+        html += '</tr></thead><tbody>';
+        for (let i = 0; i < currentData.length; i++) {
+            html += '<tr>';
+            for (let h of currentHeaders) {
+                let val = currentData[i][h];
+                let display = (typeof val === 'number') ? val.toFixed(6) : val;
+                html += `<td class="editable" data-row="${i}" data-col="${h}">${display}</td>`;
+            }
+            html += '</tr>';
+        }
+        html += '</tbody></table>';
+        wrapper.innerHTML = html;
+
+        // 绑定双击编辑事件
+        document.querySelectorAll('td.editable').forEach(td => {
+            td.ondblclick = function(e) {
+                let row = parseInt(this.dataset.row);
+                let col = this.dataset.col;
+                let oldVal = currentData[row][col];
+                let newVal = prompt(`编辑 ${col}`, oldVal);
+                if (newVal !== null && !isNaN(parseFloat(newVal))) {
+                    currentData[row][col] = parseFloat(newVal);
+                    renderTable();
+                    showStatus(`已修改 [${row+1}, ${col}] = ${newVal}`);
+                }
+            };
+        });
+        updateRuleSelect();
+    }
+
+    // 导出TXT
+    function exportTXT() {
+        if (!currentHeaders.length || !currentData.length) {
+            showStatus("❌ 无数据可导出");
+            return;
+        }
+        let lines = [currentHeaders.join(',')];
+        for (let row of currentData) {
+            let vals = currentHeaders.map(h => row[h]);
+            lines.push(vals.join(','));
+        }
+        let txt = lines.join('\n');
+        let blob = new Blob([txt], {type: 'text/plain'});
+        let a = document.createElement('a');
+        let url = URL.createObjectURL(blob);
+        let now = new Date();
+        let dateStr = now.toISOString().slice(0,19).replace(/:/g, '-');
+        a.download = `d3_child_${dateStr}.txt`;
+        a.href = url;
+        a.click();
+        URL.revokeObjectURL(url);
+        showStatus("✅ 已导出 TXT，请手动改后缀为 .csv");
+    }
+
+    // 规则引擎
+    function applyRuleToColumn(colName, ruleText) {
+        if (!currentData.length) { showStatus("❌ 无数据"); return false; }
+        let colIdx = currentHeaders.indexOf(colName);
+        if (colIdx === -1) { showStatus(`❌ 未找到列 ${colName}`); return false; }
+
+        let total = currentData.length;
+        let rule = ruleText.trim();
+
+        // 全局值
+        let globalMatch = rule.match(/^(\d+(?:\.\d+)?)$/);
+        if (globalMatch) {
+            let val = parseFloat(globalMatch[1]);
+            for (let i = 0; i < total; i++) currentData[i][colName] = val;
+            showStatus(`✅ 已应用全局值 ${val} 到 ${colName}`);
+            renderTable();
+            return true;
+        }
+
+        // 分段规则
+        if (rule.includes('=') && (rule.includes('QD') || rule.includes('D') || rule.includes('ZD'))) {
+            let segments = rule.split(',');
+            for (let seg of segments) {
+                let [range, valStr] = seg.split('=');
+                if (!range || !valStr) continue;
+                let val = parseFloat(valStr.trim());
+                if (isNaN(val)) continue;
+                let startIdx = 0, endIdx = total - 1;
+                let rangePart = range.trim();
+                if (rangePart === 'QD') { startIdx = 0; endIdx = 0; }
+                else if (rangePart === 'ZD') { startIdx = total - 1; endIdx = total - 1; }
+                else if (rangePart.includes('-')) {
+                    let [s, e] = rangePart.split('-');
+                    if (s === 'QD') startIdx = 0;
+                    else if (s.startsWith('D')) startIdx = parseInt(s.substring(1)) - 1;
+                    else startIdx = parseInt(s) - 1;
+                    if (e === 'ZD') endIdx = total - 1;
+                    else if (e.startsWith('D')) endIdx = parseInt(e.substring(1)) - 1;
+                    else endIdx = parseInt(e) - 1;
+                } else if (rangePart.startsWith('D')) {
+                    let idx = parseInt(rangePart.substring(1)) - 1;
+                    startIdx = endIdx = idx;
+                } else {
+                    let idx = parseInt(rangePart) - 1;
+                    startIdx = endIdx = idx;
+                }
+                startIdx = Math.max(0, Math.min(startIdx, total - 1));
+                endIdx = Math.max(0, Math.min(endIdx, total - 1));
+                for (let i = startIdx; i <= endIdx; i++) currentData[i][colName] = val;
+            }
+            showStatus(`✅ 已应用分段规则到 ${colName}`);
+            renderTable();
+            return true;
+        }
+
+        // 奇偶
+        let oddEven = rule.match(/奇偶\((\d+(?:\.\d+)?),(\d+(?:\.\d+)?)\)/);
+        if (oddEven) {
+            let oddVal = parseFloat(oddEven[1]), evenVal = parseFloat(oddEven[2]);
+            for (let i = 0; i < total; i++) {
+                currentData[i][colName] = (i % 2 === 0) ? evenVal : oddVal;
+            }
+            showStatus(`✅ 已应用奇偶规则 (奇:${oddVal}, 偶:${evenVal})`);
+            renderTable();
+            return true;
+        }
+
+        // 质数
+        let prime = rule.match(/质数\((\d+(?:\.\d+)?)\)/);
+        if (prime) {
+            let primeVal = parseFloat(prime[1]);
+            function isPrime(n) { if (n<=1) return false; if (n<=3) return true; if (n%2===0||n%3===0) return false; for(let i=5;i*i<=n;i+=6) if(n%i===0||n%(i+2)===0) return false; return true; }
+            for (let i = 0; i < total; i++) {
+                if (isPrime(i+1)) currentData[i][colName] = primeVal;
+            }
+            showStatus(`✅ 已应用质数规则 (质数点:${primeVal})`);
+            renderTable();
+            return true;
+        }
+
+        // 正弦波
+        let sin = rule.match(/正弦波\((\d+(?:\.\d+)?),(\d+(?:\.\d+)?),(\d+(?:\.\d+)?)\)/);
+        if (sin) {
+            let minVal = parseFloat(sin[1]), maxVal = parseFloat(sin[2]), period = parseFloat(sin[3]);
+            if (period <= 0) period = total;
+            for (let i = 0; i < total; i++) {
+                let t = (i / period) * 2 * Math.PI;
+                let sinVal = minVal + (maxVal - minVal) * (Math.sin(t) + 1) / 2;
+                currentData[i][colName] = sinVal;
+            }
+            showStatus(`✅ 已应用正弦波规则 (${minVal}~${maxVal}, 周期${period})`);
+            renderTable();
+            return true;
+        }
+
+        // 斐波那契
+        let fib = rule.match(/斐波那契\((\d+(?:\.\d+)?),(\d+(?:\.\d+)?)\)/);
+        if (fib) {
+            let f1 = parseFloat(fib[1]), f2 = parseFloat(fib[2]);
+            let fibVals = [f1, f2];
+            for (let i = 2; i < total; i++) fibVals.push(fibVals[i-1] + fibVals[i-2]);
+            let maxFib = Math.max(...fibVals);
+            for (let i = 0; i < total; i++) {
+                let norm = f1 + (fibVals[i] / maxFib) * (f2 - f1);
+                currentData[i][colName] = norm;
+            }
+            showStatus(`✅ 已应用斐波那契规则 (${f1}~${f2})`);
+            renderTable();
+            return true;
+        }
+
+        showStatus(`❌ 无法解析规则: ${rule}`);
+        return false;
+    }
+
+    // 逆向生成体素流
+    function reverseToVoxel() {
+        if (!currentData.length || !currentHeaders.includes("latitude")) {
+            showStatus("❌ 表格缺少经纬度数据");
+            return;
+        }
+        let origin = { lat: currentData[0]["latitude"], lng: currentData[0]["longitude"], alt: currentData[0]["altitude(m)"], meterPerVoxel: currentOrigin.meterPerVoxel };
+        let points = [];
+        for (let i = 0; i < currentData.length; i++) {
+            let gps = { lat: currentData[i]["latitude"], lng: currentData[i]["longitude"], alt: currentData[i]["altitude(m)"] };
+            let vox = gpsToVoxel(gps, origin);
+            let type = (i === 0) ? "QD" : (i === currentData.length-1) ? "ZD" : `D${i+1}`;
+            points.push({ type, x: vox.x, y: vox.y, z: vox.z });
+        }
+        let output = points.map(p => `${p.type}(${p.x},${p.y},${p.z})`).join('\n');
+        document.getElementById("voxelStreamOutput").innerText = output;
+        document.getElementById("reverseResult").style.display = "block";
+        showStatus("✅ 逆向生成体素坐标流完成");
+    }
+
+    function updateRuleSelect() {
+        let sel = document.getElementById("ruleColumnSelect");
+        sel.innerHTML = '';
+        for (let h of currentHeaders) {
+            let chn = columnMapping[h] || h;
+            let opt = document.createElement('option');
+            opt.value = h;
+            opt.textContent = chn;
+            sel.appendChild(opt);
+        }
+    }
+
+    function showStatus(msg) {
+        let div = document.getElementById("statusMsg");
+        div.innerText = msg;
+        setTimeout(() => { if(div.innerText === msg) div.innerText = ''; }, 3000);
+    }
+
+    // 搜索
+    function performSearch() {
+        let keyword = document.getElementById("searchInput").value.trim().toLowerCase();
+        if (!keyword) { clearHighlight(); return; }
+        let cells = document.querySelectorAll('td.editable');
+        searchResults = [];
+        cells.forEach((cell, idx) => {
+            let text = cell.innerText.toLowerCase();
+            if (text.includes(keyword)) {
+                searchResults.push(cell);
+                cell.classList.add('search-highlight');
+            } else {
+                cell.classList.remove('search-highlight');
+            }
+        });
+        if (searchResults.length) { searchIndex = 0; searchResults[0].scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+        showStatus(`找到 ${searchResults.length} 个匹配项`);
+    }
+    function clearHighlight() {
+        document.querySelectorAll('td.editable').forEach(cell => cell.classList.remove('search-highlight'));
+        searchResults = []; searchIndex = -1;
+    }
+    function navigateSearch(delta) {
+        if (!searchResults.length) return;
+        searchIndex = (searchIndex + delta + searchResults.length) % searchResults.length;
+        searchResults[searchIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // 自动推荐体素边长
+    function autoRecommend() {
+        let voxText = document.getElementById("voxelInput").value;
+        let points = parseVoxelPoints(voxText);
+        if (points.length < 2) { showStatus("❌ 体素坐标不足，无法推荐"); return; }
+        // 粗略推荐：默认0.5米
+        showStatus("💡 推荐体素边长: 0.5m (标准值)");
+    }
+
+    // 重置
+    function resetTable() {
+        currentHeaders = [];
+        currentData = [];
+        renderTable();
+        showStatus("表格已重置");
+    }
+
+    // 事件绑定
+    document.getElementById("parseCsvBtn").onclick = () => {
+        let text = document.getElementById("csvInput").value;
+        let parsed = parseCSV(text);
+        if (!parsed || !parsed.headers.length || !parsed.data.length) {
+            showStatus("❌ CSV解析失败，请检查格式");
+            return;
+        }
+        currentHeaders = parsed.headers;
+        currentData = parsed.data;
+        renderTable();
+        showStatus(`✅ 解析成功: ${currentData.length} 个航点, ${currentHeaders.length} 列`);
+    };
+    document.getElementById("reverseToVoxelBtn").onclick = reverseToVoxel;
+    document.getElementById("genTableFromVoxelBtn").onclick = () => {
+        let text = document.getElementById("voxelInput").value;
+        let points = parseVoxelPoints(text);
+        if (!points.length) { showStatus("❌ 无效的体素坐标格式"); return; }
+        currentOrigin = {
+            lat: parseFloat(document.getElementById("voxelOriginLat").value),
+            lng: parseFloat(document.getElementById("voxelOriginLng").value),
+            alt: parseFloat(document.getElementById("voxelOriginAlt").value),
+            meterPerVoxel: parseFloat(document.getElementById("voxelMeterPer").value)
+        };
+        let { headers, data } = generateTableFromVoxel(points, currentOrigin);
+        currentHeaders = headers;
+        currentData = data;
+        renderTable();
+        showStatus(`✅ 从体素坐标生成表格: ${points.length} 个航点`);
+    };
+    document.getElementById("applyRuleBtn").onclick = () => {
+        let col = document.getElementById("ruleColumnSelect").value;
+        let rule = document.getElementById("ruleExpression").value;
+        if (!col || !rule) { showStatus("❌ 请选择列并输入规则"); return; }
+        applyRuleToColumn(col, rule);
+    };
+    document.getElementById("exportTxtBtn").onclick = exportTXT;
+    document.getElementById("resetTableBtn").onclick = resetTable;
+    document.getElementById("clearCsvBtn").onclick = () => { document.getElementById("csvInput").value = ''; resetTable(); };
+    document.getElementById("clearVoxelBtn").onclick = () => { document.getElementById("voxelInput").value = ''; };
+    document.getElementById("autoRecommendBtn").onclick = autoRecommend;
+    document.getElementById("searchInput").oninput = performSearch;
+    document.getElementById("searchPrevBtn").onclick = () => navigateSearch(-1);
+    document.getElementById("searchNextBtn").onclick = () => navigateSearch(1);
+    document.getElementById("clearSearchBtn").onclick = clearHighlight;
+
+    // 模式切换
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.onclick = () => {
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById("csvMode").classList.remove('active');
+            document.getElementById("voxelMode").classList.remove('active');
+            if (btn.dataset.mode === 'csv') document.getElementById("csvMode").classList.add('active');
+            else document.getElementById("voxelMode").classList.add('active');
+        };
+    });
+
+    // 初始化
+    resetTable();
+</script>
+</body>
+</html>
